@@ -102,3 +102,6 @@ BEGIN
   RETURN jsonb_build_object('ok', true, 'fully_covered', v_all_covered, 'short', v_short);
 END;
 $$;
+
+-- Hardening from 0022, deferred to here since the function didn't exist yet.
+revoke execute on function public.issue_requisition(uuid, uuid) from anon, public;

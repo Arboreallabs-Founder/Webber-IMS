@@ -5,4 +5,5 @@
 -- ============================================================
 revoke execute on function public.dispatch_job_work(uuid, uuid)          from anon, public;
 revoke execute on function public.receive_job_work(uuid, numeric, uuid)  from anon, public;
-revoke execute on function public.issue_requisition(uuid, uuid)          from anon, public;
+-- issue_requisition(uuid, uuid) doesn't exist yet — it's created by 0027,
+-- which revokes its own anon/public execute grant at the end.
