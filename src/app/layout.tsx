@@ -3,10 +3,10 @@ import "./globals.css";
 import { NavigationProgress } from "@/components/navigation-progress";
 
 export const metadata: Metadata = {
-  title: "YAHA Waters IMS",
-  description: "Inventory Management System — YAHA Water Systems Pvt. Ltd.",
+  title: "Webber IMS",
+  description: "Inventory Management System — Webber Electro Corp",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, title: "YAHA IMS", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Webber IMS", statusBarStyle: "default" },
   icons: {
     icon: [
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },

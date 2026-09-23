@@ -6,7 +6,7 @@
 import { adminClient } from "./_client";
 
 const EMAIL = (process.env.SEED_ADMIN_EMAIL || "sidajayb@gmail.com").toLowerCase();
-const PASSWORD = process.env.SEED_ADMIN_PASSWORD || "YahaWaters@2026";
+const PASSWORD = process.env.SEED_ADMIN_PASSWORD || "WebberElectro@2026";
 const NAME = process.env.SEED_ADMIN_NAME || "Administrator";
 
 async function main() {

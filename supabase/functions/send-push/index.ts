@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
   const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY");
   const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY");
-  const vapidSubject = Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@yahawater.in";
+  const vapidSubject = Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.com";
   if (!vapidPublicKey || !vapidPrivateKey) return json({ error: "VAPID keys not configured" }, 500);
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 
@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
   if (!subs || subs.length === 0) return json({ ok: true, sent: 0 });
 
   const payload = JSON.stringify({
-    title: "YAHA IMS",
+    title: "Webber IMS",
     body: notification.message,
     url: notification.link_path ?? "/",
   });

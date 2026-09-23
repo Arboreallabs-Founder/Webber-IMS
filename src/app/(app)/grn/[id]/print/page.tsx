@@ -9,9 +9,9 @@ import { formatNumber } from "@/lib/utils";
 
 // ---- MRIN form's own fixed header block (distinct from the PO print's OUR block) ----
 const MRIN_OUR = {
-  tagline: "Providing Design, Engineering & Manufacturing of Self Cleaning Auto Backwash Filters & Complete Water & Waste Water Treatment Plant.",
-  address: "Survey No. 26, Unit No.19, Universal Ind. Estate, Dheku, Sajgaon, Khopoli, Khalapur, District- Raigad : 410203.",
-  formatNo: "YWSPL/MRIN/001",
+  tagline: "[Add company tagline]",
+  address: "[Add company address]",
+  formatNo: "WEC/MRIN/001",
   rev: "Rev.00",
   formDate: "28.07.2026",
 };
@@ -183,11 +183,8 @@ export default async function GrnPrintPage({ params }: { params: Promise<{ id: s
         <div className="flex items-start justify-between border-b border-black p-3">
           <div className="flex items-start gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/yaha-logo.png" alt="YAHA" className="h-16 w-16 object-contain" />
+            <img src="/webber-masthead.png" alt="Webber Electro Corp" className="h-10 w-auto object-contain" />
             <div>
-              <p className="text-xl font-extrabold tracking-tight">
-                YAHA <span className="font-normal">WATER SYSTEM PVT LTD.</span>
-              </p>
               <p className="mt-0.5 max-w-md text-[9px]">{MRIN_OUR.tagline}</p>
               <p className="text-[9px]">{MRIN_OUR.address}</p>
             </div>

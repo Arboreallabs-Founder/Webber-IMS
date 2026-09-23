@@ -1,6 +1,6 @@
 // Minimal service worker — enables installability + offline-tolerant shell.
 // Network-first for same-origin GETs; never caches Supabase API or auth responses.
-const CACHE = "yaha-ims-shell-v1";
+const CACHE = "webber-ims-shell-v1";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
@@ -28,7 +28,7 @@ self.addEventListener("push", (event) => {
   let data = {};
   try { data = event.data?.json() ?? {}; } catch { /* non-JSON payload, ignore */ }
   event.waitUntil(
-    self.registration.showNotification(data.title || "YAHA IMS", {
+    self.registration.showNotification(data.title || "Webber IMS", {
       body: data.body || "",
       icon: "/icons/icon-192.png",
       data: { url: data.url || "/" },

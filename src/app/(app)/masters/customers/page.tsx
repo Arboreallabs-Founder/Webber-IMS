@@ -15,7 +15,7 @@ export default async function CustomersPage() {
     <div>
       <PageHeader
         title="Customers"
-        description="Buyers of YAHA Waters systems. Customers are linked to Projects / Orders."
+        description="Buyers of our products. Customers are linked to Projects / Orders."
       />
       <CustomerManager
         rows={rows}

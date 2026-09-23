@@ -71,7 +71,7 @@ export function AppShell({
         <div className="flex h-full flex-col">
           <div className="flex h-16 shrink-0 items-center gap-2 border-b border-border px-2.5">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-              YW
+              WE
             </span>
             <span
               className={cn(
@@ -79,7 +79,7 @@ export function AppShell({
                 collapsed ? "opacity-0" : "opacity-100",
               )}
             >
-              YAHA Waters IMS
+              Webber IMS
             </span>
           </div>
           <ScrollArea className="flex-1">
@@ -97,9 +97,9 @@ export function AppShell({
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4 pt-[env(safe-area-inset-top)]">
               <span className="flex items-center gap-2 font-semibold">
                 <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-                  YW
+                  WE
                 </span>
-                YAHA Waters IMS
+                Webber IMS
               </span>
               <button onClick={() => setOpen(false)} aria-label="Close menu" className="flex size-11 items-center justify-center -mr-2">
                 <X className="size-5" />

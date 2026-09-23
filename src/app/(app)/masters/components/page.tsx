@@ -35,7 +35,6 @@ export default async function ComponentsPage() {
     { key: "name", label: "Name" },
     { key: "type", label: "Type" },
     { key: "grade", label: "Grade" },
-    { key: "tracking_mode", label: "QR / Lot", format: "badge" },
     { key: "parent_assembly_label", label: "Sub-assembly" },
     { key: "is_assembly", label: "Assembly", format: "bool" },
     { key: "is_job_work", label: "Job Work", format: "bool" },
@@ -50,29 +49,6 @@ export default async function ComponentsPage() {
     { name: "type", label: "Category", type: "text", placeholder: "Nozzle, Fastener, Media…" },
     { name: "grade", label: "Grade", type: "text", placeholder: "MS, SS316, Brass…" },
     { name: "spec", label: "Spec", type: "text", placeholder: 'e.g. 12", #150' },
-    {
-      name: "tracking_mode",
-      label: "QR / Lot tracking",
-      type: "select",
-      required: true,
-      options: [
-        { value: "item", label: "Item — QR per piece" },
-        { value: "box", label: "Box — QR on the box (many pieces)" },
-        { value: "bulk", label: "Bulk — measured (length / weight / volume)" },
-      ],
-      help: "How stock of this component is labelled & counted.",
-    },
-    {
-      name: "quantity_type",
-      label: "Quantity type",
-      type: "select",
-      required: true,
-      options: [
-        { value: "nos", label: "Nos (count)" },
-        { value: "length", label: "Length (pipes / rods) — metres" },
-        { value: "weight", label: "Weight (sheets / raw stock) — KG" },
-      ],
-    },
     { name: "uom", label: "UoM display label", type: "text", placeholder: "Nos, Mtr, Kg, Ltr…" },
     { name: "nominal_size", label: "Nominal size", type: "text", placeholder: '2", 1/4" x 1/4"…' },
     { name: "od_mm", label: "OD (mm)", type: "number", step: "any" },
@@ -119,6 +95,7 @@ export default async function ComponentsPage() {
         canSeeFinancials={finance}
         searchKeys={["component_no", "name", "type", "grade"]}
         dialogClassName="max-w-2xl"
+        hiddenValues={{ tracking_mode: "box", quantity_type: "nos" }}
       />
     </div>
   );

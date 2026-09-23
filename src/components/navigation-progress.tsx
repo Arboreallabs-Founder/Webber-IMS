@@ -3,7 +3,7 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 
-const NAV_START_EVENT = "yaha:nav-start";
+const NAV_START_EVENT = "webber:nav-start";
 
 /**
  * Kicks off the top progress bar for a navigation the bar can't detect on its

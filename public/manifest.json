@@ -1,7 +1,7 @@
 {
-  "name": "YAHA Waters IMS",
-  "short_name": "YAHA IMS",
-  "description": "Inventory Management System — YAHA Water Systems",
+  "name": "Webber IMS",
+  "short_name": "Webber IMS",
+  "description": "Inventory Management System — Webber Electro Corp",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",

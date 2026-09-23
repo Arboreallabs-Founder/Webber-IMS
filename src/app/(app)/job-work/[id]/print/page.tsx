@@ -8,26 +8,24 @@ import { DocumentSignatureBlock } from "@/components/document-signature-block";
 import { getSigningState } from "@/lib/signatures";
 import { formatNumber } from "@/lib/utils";
 
-// ---- our company's fixed details (from the real YAHA PO template) ----
+// ---- our company's fixed details — update with Webber Electro Corp's real info ----
 const OUR = {
-  billingName: "Yaha Water Systesm Pvt. Ltd.",
-  billingAddress: ["Plot No. 19, Universal Indl. Estate,", "Vil. Dheku, Sajgaon, Khopoli,", "Tal. Khalapur, Dist. Raigad - 410203"],
-  contactName: "MR. RAKESH M.",
-  contactMob: "+91 8806565099",
-  contactEmail: "rakeshm@yahawater.in",
-  gstin: "27AABCY1893P1ZJ",
-  pan: "AABCY1893P",
-  headOffice: "Head Office : B-305, Sai Commercial Complex, Govandi, Mumbai - 400 088.",
+  billingName: "Webber Electro Corp",
+  billingAddress: ["[Add company address]"],
+  contactName: "[Add contact name]",
+  contactMob: "[Add contact number]",
+  contactEmail: "[Add contact email]",
+  gstin: "[Add GSTIN]",
+  pan: "[Add PAN]",
+  headOffice: "Head Office : [Add address]",
   deliveryAddress: [
-    "Yaha Water Systesm Pvt. Ltd.",
-    "Plot No. 19, Universal Indl. Estate,",
-    "Vil. Dheku, Sajgaon, Khopoli,",
-    "Tal. Khalapur, Dist. Raigad - 410203",
+    "Webber Electro Corp",
+    "[Add company address]",
   ],
 };
 
 const TERMS = [
-  "This material remains the property of YAHA WATER SYSTEMS PVT. LTD. and is issued strictly for job-work processing.",
+  "This material remains the property of WEBBER ELECTRO CORP and is issued strictly for job-work processing.",
   "Please mention our JW no. on your delivery challan & invoice for the processed material returned.",
   "The returned material should be labelled with the JW No. and quantity for reconciliation against this challan.",
   "Any loss, damage or shortfall in the material during job-work must be reported immediately.",
@@ -144,20 +142,13 @@ export default async function JwPrintPage({ params }: { params: Promise<{ id: st
         <div className="flex items-center justify-between border-b border-black p-3">
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/yaha-logo.png" alt="YAHA" className="h-16 w-16 object-contain" />
+            <img src="/webber-masthead.png" alt="Webber Electro Corp" className="h-12 w-auto object-contain" />
             <div>
-              <p className="text-2xl font-extrabold tracking-tight">
-                YAHA <span className="font-normal">water systems pvt. ltd.</span>
-              </p>
               <p className="text-[10px]">{OUR.headOffice}</p>
             </div>
           </div>
           <div className="text-right text-[10px] leading-snug">
-            <p className="font-semibold">Sustainable Engineering Solutions for</p>
-            <p>Water Treatment</p>
-            <p>Cooling Water Systems</p>
-            <p>River &amp; Sea Water Intake</p>
-            <p>Process Water Treatment</p>
+            <p className="font-semibold">[Add company tagline]</p>
           </div>
         </div>
 
