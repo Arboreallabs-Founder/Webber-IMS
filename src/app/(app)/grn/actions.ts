@@ -49,19 +49,16 @@ export async function createGrn(fd: FormData): Promise<ActionResult> {
   if (!challan_no && !invoice_no) {
     return { error: "Enter a challan number or an invoice number — at least one is required." };
   }
-  const is_job_work = String(fd.get("is_job_work") ?? "") === "true";
   const vendor_id = String(fd.get("vendor_id") ?? "") || null;
-  if (is_job_work && !vendor_id) return { error: "Pick the job-work vendor." };
 
   const supabase = await createClient();
 
-  const { data: grnNo } = await supabase.rpc(is_job_work ? "next_jw_grn_no" : "next_grn_no");
+  const { data: grnNo } = await supabase.rpc("next_grn_no");
   const { data, error } = await supabase
     .from("grns")
     .insert({
       grn_no: grnNo,
       vendor_id,
-      is_job_work,
       challan_no,
       invoice_no,
       received_by: p.id,
@@ -72,9 +69,9 @@ export async function createGrn(fd: FormData): Promise<ActionResult> {
   if (error) return { error: grnDupeError(error, challan_no, invoice_no) };
 
   // Auto-sign the creator's slot right away — a GRN has no draft stage to
-  // protect (unlike PO/Job-Work, which still require an explicit Sign &
-  // Send/Dispatch), so there's no reason to make them come back and click
-  // Sign separately. Best-effort: if they have no saved signature yet, this
+  // protect (unlike PO, which still requires an explicit Sign & Send), so
+  // there's no reason to make them come back and click Sign separately.
+  // Best-effort: if they have no saved signature yet, this
   // silently no-ops and the manual Sign button on the GRN page covers it.
   const { data: mySig } = await supabase
     .from("signatures")
@@ -106,7 +103,11 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
   const unitCostRaw = String(fd.get("unit_cost") ?? "").trim();
 
   const po_line_id = String(fd.get("po_line_id") ?? "") || null;
-  if (!po_line_id) return { error: "Select an open PO line — receiving without a PO is not allowed." };
+
+  // A PO's price is what gets registered — a typed Unit cost can't coexist with a matched PO.
+  if (po_line_id && unitCostRaw !== "") {
+    return { error: "A Purchase Order is attached to this line — clear the Unit cost field so the PO's price is the one registered." };
+  }
 
   const pieceCount  = Number(fd.get("piece_count")  ?? "") || null;
   const pieceLength = Number(fd.get("piece_length") ?? "") || null;
@@ -118,24 +119,28 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
   const supabase = await createClient();
 
   // Block over-receipt: this line may not push the PO line's total received
-  // quantity above what was ordered. (DB trigger grn_line_before_insert is the
-  // backstop; this gives the receiver a readable message.)
-  const { data: poLine } = await supabase
-    .from("po_lines")
-    .select("qty_ordered, qty_received")
-    .eq("id", po_line_id)
-    .maybeSingle();
-  if (poLine) {
-    const ordered = Number(poLine.qty_ordered ?? 0);
-    const received = Number(poLine.qty_received ?? 0);
-    const remaining = ordered - received;
-    if (qty > remaining + 1e-6) {
-      return {
-        error:
-          `This PO line has ${formatNumber(remaining)} left to receive ` +
-          `(ordered ${formatNumber(ordered)}, already received ${formatNumber(received)}). ` +
-          `You entered ${formatNumber(qty)}. Revise the PO quantity if the supplier sent more.`,
-      };
+  // quantity above what was ordered. Only applies when receiving against a PO
+  // line — PO-less receipts have nothing to over-receive against. (DB trigger
+  // grn_line_before_insert is the backstop; this gives the receiver a readable
+  // message.)
+  if (po_line_id) {
+    const { data: poLine } = await supabase
+      .from("po_lines")
+      .select("qty_ordered, qty_received")
+      .eq("id", po_line_id)
+      .maybeSingle();
+    if (poLine) {
+      const ordered = Number(poLine.qty_ordered ?? 0);
+      const received = Number(poLine.qty_received ?? 0);
+      const remaining = ordered - received;
+      if (qty > remaining + 1e-6) {
+        return {
+          error:
+            `This PO line has ${formatNumber(remaining)} left to receive ` +
+            `(ordered ${formatNumber(ordered)}, already received ${formatNumber(received)}). ` +
+            `You entered ${formatNumber(qty)}. Revise the PO quantity if the supplier sent more.`,
+        };
+      }
     }
   }
 
@@ -163,39 +168,4 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
 
   revalidatePath(`/grn/${grn_id}`);
   return { ok: true };
-}
-
-export async function addJwGrnLine(fd: FormData): Promise<ActionResult> {
-  const p = await receiver();
-  if (!p) return { error: "Not authorized." };
-  const grn_id = String(fd.get("grn_id"));
-  const jw_line_id = String(fd.get("jw_line_id") ?? "") || null;
-  if (!jw_line_id) return { error: "Select a job-work line to receive." };
-  const qty = Number(fd.get("qty") ?? 0) || 0;
-  if (qty <= 0) return { error: "Enter a received quantity." };
-  const answersRaw = String(fd.get("answers") ?? "").trim();
-  const answers = answersRaw ? JSON.parse(answersRaw) : null;
-
-  const supabase = await createClient();
-  // Best-effort: attach the receiver's saved signature so an Admin / Team Lead
-  // receipt of a templated component auto-approves its IRN inline — same
-  // no-op-if-missing pattern as submitIrn() for PO-based GRNs.
-  const { data: mySig } = await supabase
-    .from("signatures")
-    .select("id")
-    .eq("user_id", p.id)
-    .order("is_default", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { data, error } = await supabase.rpc("receive_job_work", {
-    p_grn_id: grn_id, p_line_id: jw_line_id, p_qty: qty, p_user_id: p.id, p_answers: answers,
-    p_signature_id: mySig?.id ?? null,
-  });
-  if (error) return { error: error.message };
-  if (data?.error) return { error: data.error };
-
-  revalidatePath(`/grn/${grn_id}`);
-  revalidatePath("/job-work");
-  return { ok: true, status: data?.status ?? undefined };
 }

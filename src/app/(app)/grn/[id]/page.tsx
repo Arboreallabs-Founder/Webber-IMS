@@ -3,16 +3,17 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Printer } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile, canSeeFinancials } from "@/lib/auth";
+import { getVendors } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
-import { DocumentSignButton, type MySignature } from "@/components/document-sign-button";
+import { DocumentSignButton } from "@/components/document-sign-button";
 import { getSigningState } from "@/lib/signatures";
 import { formatDate } from "@/lib/utils";
 import { GrnReceiver } from "./grn-receiver";
-import { JwGrnReceiver, type OpenJwLine, type PostedJwLine, type PendingJwIrn, type TemplateField } from "./jw-grn-receiver";
 import { submitIrn } from "../irn-actions";
 import { signGrn } from "../actions";
+import { createComponentQuick } from "../../masters/bom-builder/actions";
 
 export default async function GrnDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,20 +30,7 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
     profile ? supabase.from("signatures").select("id, label, method, image_data_url, is_default").eq("user_id", profile.id).order("is_default", { ascending: false }) : Promise.resolve({ data: [] }),
   ]);
 
-  if (grn.is_job_work) {
-    return (
-      <JobWorkGrnPage
-        grnId={id}
-        grn={grn}
-        canReceive={canReceive}
-        canSeeFinancials={canSeeFinancials(role)}
-        signingState={signingState}
-        mySignatures={mySignatures ?? []}
-      />
-    );
-  }
-
-  const [{ data: grnLines }, { data: components }, { data: projects }, vendor, { data: allOpenPoLines }, { data: vendorComps }] =
+  const [{ data: grnLines }, { data: components }, { data: projects }, vendor, { data: allOpenPoLines }, { data: vendorComps }, allVendors, { data: inspectionTemplates }] =
     await Promise.all([
       supabase.from("grn_lines").select("*").eq("grn_id", id).order("created_at"),
       supabase.from("components").select("id, component_no, name, quantity_type, tracking_mode, inspection_template_id").order("component_no"),
@@ -57,8 +45,12 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
       grn.vendor_id
         ? supabase.from("vendor_components").select("component_id").eq("vendor_id", grn.vendor_id)
         : Promise.resolve({ data: [] }),
+      getVendors(),
+      supabase.from("inspection_templates").select("id, name").eq("is_active", true).order("name"),
     ]);
   const vendorComponentIds = (vendorComps ?? []).map((vc) => vc.component_id);
+  const vendorOptions = (allVendors ?? []).map((v) => ({ value: v.id, label: v.name }));
+  const templateOptions = (inspectionTemplates ?? []).map((t) => ({ value: t.id, label: t.name }));
 
   const compLabel = new Map((components ?? []).map((c) => [c.id, `${c.component_no} — ${c.name}`]));
 
@@ -216,10 +208,14 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
         canSeeFinancials={canSeeFinancials(role)}
         vendorComponentIds={vendorComponentIds}
         vendorName={vendor?.data?.name ?? null}
+        vendorId={grn.vendor_id ?? null}
         templateFieldsByTemplate={templateFieldsByTemplate}
         excludedFieldIdsByComponent={excludedFieldIdsByComponent}
         irnRows={irnRows}
         submitIrnAction={submitIrn}
+        createComponentAction={createComponentQuick}
+        vendorOptions={vendorOptions}
+        templateOptions={templateOptions}
       />
     </div>
   );
@@ -230,224 +226,6 @@ function Info({ label, value }: { label: string; value: string | null }) {
     <div>
       <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-0.5 font-medium">{value || "—"}</p>
-    </div>
-  );
-}
-
-// Job-work GRNs receive against open job-work lines for the GRN's own vendor
-// (the vendor is fixed at GRN creation) — a separate, simpler picker than the
-// PO-line-driven GrnReceiver, since there's no quantity-type/manual-cost variation.
-async function JobWorkGrnPage({
-  grnId, grn, canReceive, canSeeFinancials, signingState, mySignatures,
-}: {
-  grnId: string;
-  grn: { grn_no: string; vendor_id: string | null; challan_no: string | null; received_at: string };
-  canReceive: boolean;
-  canSeeFinancials: boolean;
-  signingState: Awaited<ReturnType<typeof getSigningState>>;
-  mySignatures: MySignature[];
-}) {
-  const supabase = await createClient();
-  const [vendor, { data: openLinesRaw }, { data: grnLines }] = await Promise.all([
-    grn.vendor_id ? supabase.from("vendors").select("name").eq("id", grn.vendor_id).maybeSingle() : Promise.resolve({ data: null }),
-    grn.vendor_id
-      ? supabase
-          .from("job_work_lines")
-          .select("id, component_id, raw_lot_id, qty_sent, qty_returned, job_work_orders!inner(id, jw_no, vendor_id, status)")
-          .in("job_work_orders.status", ["sent", "partial"])
-          .eq("job_work_orders.vendor_id", grn.vendor_id)
-      : Promise.resolve({ data: [] }),
-    supabase.from("grn_lines").select("id, component_id, qty_received, unit_cost, jw_line_id").eq("grn_id", grnId).order("created_at"),
-  ]);
-
-  const openOutstanding = (openLinesRaw ?? [])
-    .map((l) => ({ ...l, outstanding: Number(l.qty_sent ?? 0) - Number(l.qty_returned ?? 0) }))
-    .filter((l) => l.outstanding > 0);
-
-  const componentIds = [...new Set([
-    ...openOutstanding.map((l) => l.component_id),
-    ...(grnLines ?? []).map((l) => l.component_id),
-  ].filter(Boolean))] as string[];
-  const { data: components } = componentIds.length
-    ? await supabase.from("components").select("id, component_no, name, inspection_template_id").in("id", componentIds)
-    : { data: [] };
-  const compById = new Map((components ?? []).map((c) => [c.id, c]));
-  const compLabel = (id: string | null) => (id && compById.get(id) ? `${compById.get(id)!.component_no} — ${compById.get(id)!.name}` : "—");
-
-  const rawLotIds = [...new Set(openOutstanding.map((l) => l.raw_lot_id).filter(Boolean))] as string[];
-  const { data: rawLots } = rawLotIds.length
-    ? await supabase.from("inventory_lots").select("id, lot_code, grn_line_id").in("id", rawLotIds)
-    : { data: [] };
-  const rawLotById = new Map((rawLots ?? []).map((l) => [l.id, l]));
-
-  const openLines: OpenJwLine[] = openOutstanding.map((l) => {
-    const order = l.job_work_orders as unknown as { id: string; jw_no: string };
-    const rawLot = l.raw_lot_id ? rawLotById.get(l.raw_lot_id) : undefined;
-    return {
-      id: l.id,
-      component_id: l.component_id ?? "",
-      component_label: compLabel(l.component_id),
-      jw_no: order?.jw_no ?? "—",
-      jw_order_id: order?.id ?? "",
-      outstanding: l.outstanding,
-      raw_lot_code: rawLot?.lot_code ?? "—",
-    };
-  });
-
-  // ---- inspection checklist fields, per job-work component with an open line ----
-  const templateIds = [...new Set(openOutstanding.map((l) => compById.get(l.component_id ?? "")?.inspection_template_id).filter(Boolean))] as string[];
-  const [{ data: rawTemplateFields }, { data: exclusions }] = await Promise.all([
-    templateIds.length
-      ? supabase.from("inspection_template_fields")
-          .select("id, template_id, label, field_type, options, is_required")
-          .in("template_id", templateIds).eq("is_active", true).order("sort_order")
-      : Promise.resolve({ data: [] }),
-    supabase.from("component_inspection_field_exclusions").select("component_id, field_id").in("component_id", componentIds.length ? componentIds : [""]),
-  ]);
-  const fieldsByTemplate = new Map<string, TemplateField[]>();
-  for (const f of rawTemplateFields ?? []) {
-    const arr = fieldsByTemplate.get(f.template_id) ?? [];
-    arr.push({ id: f.id, label: f.label, field_type: f.field_type, options: (f.options as string[] | null) ?? null, is_required: f.is_required });
-    fieldsByTemplate.set(f.template_id, arr);
-  }
-  const excludedByComponent = new Map<string, Set<string>>();
-  for (const x of exclusions ?? []) {
-    const set = excludedByComponent.get(x.component_id) ?? new Set<string>();
-    set.add(x.field_id);
-    excludedByComponent.set(x.component_id, set);
-  }
-  const templateFieldsByComponent: Record<string, TemplateField[]> = {};
-  for (const c of components ?? []) {
-    if (!c.inspection_template_id) continue;
-    const excluded = excludedByComponent.get(c.id) ?? new Set<string>();
-    templateFieldsByComponent[c.id] = (fieldsByTemplate.get(c.inspection_template_id) ?? []).filter((f) => !excluded.has(f.id));
-  }
-
-  // ---- carry-forward: Heat No. / Test Certificate No. / MTC from the raw material's own approved IRN ----
-  const rawGrnLineIds = [...new Set((rawLots ?? []).map((l) => l.grn_line_id).filter(Boolean))] as string[];
-  const { data: rawIrns } = rawGrnLineIds.length
-    ? await supabase.from("irns").select("id, grn_line_id").in("grn_line_id", rawGrnLineIds).eq("status", "approved")
-    : { data: [] };
-  const irnByGrnLine = new Map((rawIrns ?? []).map((i) => [i.grn_line_id, i.id]));
-  const rawIrnIds = (rawIrns ?? []).map((i) => i.id);
-  const { data: rawAnswers } = rawIrnIds.length
-    ? await supabase.from("irn_answers").select("irn_id, field_id, text_value, choice_value").in("irn_id", rawIrnIds)
-    : { data: [] };
-  const rawAnswerFieldIds = [...new Set((rawAnswers ?? []).map((a) => a.field_id))];
-  const { data: rawAnswerFields } = rawAnswerFieldIds.length
-    ? await supabase.from("inspection_template_fields").select("id, label").in("id", rawAnswerFieldIds)
-    : { data: [] };
-  const labelByFieldId = new Map((rawAnswerFields ?? []).map((f) => [f.id, f.label]));
-  const isCertField = (label: string) => /heat|certificate|\btc\b|\bmtc\b/i.test(label);
-  const answersByIrn = new Map<string, Map<string, string>>();
-  for (const a of rawAnswers ?? []) {
-    const label = labelByFieldId.get(a.field_id);
-    const value = a.text_value ?? a.choice_value;
-    if (!label || !value || !isCertField(label)) continue;
-    const m = answersByIrn.get(a.irn_id) ?? new Map<string, string>();
-    m.set(label.trim().toLowerCase(), value);
-    answersByIrn.set(a.irn_id, m);
-  }
-  const carryForwardByLine: Record<string, Record<string, string>> = {};
-  for (const l of openOutstanding) {
-    if (!l.raw_lot_id) continue;
-    const grnLineId = rawLotById.get(l.raw_lot_id)?.grn_line_id;
-    const irnId = grnLineId ? irnByGrnLine.get(grnLineId) : undefined;
-    const answers = irnId ? answersByIrn.get(irnId) : undefined;
-    if (answers) carryForwardByLine[l.id] = Object.fromEntries(answers);
-  }
-
-  // ---- posted lines: already-received job-work receipts on this GRN ----
-  const postedJwLineIds = [...new Set((grnLines ?? []).map((l) => l.jw_line_id).filter(Boolean))] as string[];
-  const { data: postedJwLines } = postedJwLineIds.length
-    ? await supabase.from("job_work_lines").select("id, jw_order_id, job_work_orders(jw_no)").in("id", postedJwLineIds)
-    : { data: [] };
-  const jwNoByLine = new Map((postedJwLines ?? []).map((l) => [l.id, (l.job_work_orders as unknown as { jw_no: string } | null)?.jw_no ?? null]));
-
-  // All IRNs on this GRN — approved ones map to a posted line; pending/rejected
-  // ones have no grn_line yet and are surfaced separately so a deferred receipt
-  // (team member, or an admin with no saved signature) still shows feedback.
-  const { data: allIrns } = await supabase
-    .from("irns")
-    .select("id, irn_no, status, grn_line_id, component_id, qty")
-    .eq("grn_id", grnId)
-    .order("created_at");
-  const irnByPostedLine = new Map((allIrns ?? []).filter((i) => i.grn_line_id).map((i) => [i.grn_line_id, i]));
-  const pendingIrns: PendingJwIrn[] = (allIrns ?? [])
-    .filter((i) => !i.grn_line_id && (i.status === "pending_approval" || i.status === "rejected"))
-    .map((i) => ({
-      id: i.id,
-      irn_no: i.irn_no,
-      component_label: compLabel(i.component_id),
-      qty: Number(i.qty ?? 0),
-      status: i.status,
-    }));
-
-  const postedLines: PostedJwLine[] = (grnLines ?? []).map((l) => {
-    const irn = irnByPostedLine.get(l.id);
-    return {
-      id: l.id,
-      component_label: compLabel(l.component_id),
-      qty: Number(l.qty_received ?? 0),
-      unit_cost: l.unit_cost,
-      jw_no: l.jw_line_id ? jwNoByLine.get(l.jw_line_id) ?? null : null,
-      irn_status: irn?.status ?? null,
-      irn_no: irn?.irn_no ?? null,
-    };
-  });
-
-  return (
-    <div>
-      <Link href="/grn" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-4" /> All goods receipts
-      </Link>
-      <PageHeader
-        title={grn.grn_no}
-        description={vendor?.data?.name ? `Job Work · ${vendor.data.name}` : "Job Work"}
-        action={
-          <div className="flex items-center gap-3">
-            {!signingState.fullySigned && signingState.canSignNow && (
-              <DocumentSignButton
-                documentId={grnId}
-                signatures={mySignatures}
-                signAction={signGrn}
-                label={signingState.isBackfill ? "Sign (for the record)" : signingState.nextSlot === 1 ? "Sign" : "Sign as approver"}
-                description={
-                  signingState.isBackfill
-                    ? "This GRN predates digital signatures — it already prints fine without one, but you can add yours for the record."
-                    : "Required before this GRN can be printed."
-                }
-              />
-            )}
-            {!signingState.fullySigned && !signingState.canSignNow && !signingState.isBackfill && (
-              <span className="text-sm text-muted-foreground">Awaiting signature</span>
-            )}
-            <Link href={`/grn/${grnId}/print`} className={buttonVariants({ variant: "outline" })}>
-              <Printer className="size-4" /> Print
-            </Link>
-          </div>
-        }
-      />
-
-      <Card className="mb-6">
-        <CardContent className="grid grid-cols-2 gap-4 p-5 text-sm sm:grid-cols-4">
-          <Info label="Vendor" value={vendor?.data?.name ?? null} />
-          <Info label="Challan" value={grn.challan_no} />
-          <Info label="Received" value={formatDate(grn.received_at)} />
-          <Info label="Lines" value={String(postedLines.length)} />
-        </CardContent>
-      </Card>
-
-      <JwGrnReceiver
-        grnId={grnId}
-        postedLines={postedLines}
-        pendingIrns={pendingIrns}
-        openLines={openLines}
-        templateFieldsByComponent={templateFieldsByComponent}
-        carryForwardByLine={carryForwardByLine}
-        canReceive={canReceive}
-        finance={canSeeFinancials}
-      />
     </div>
   );
 }

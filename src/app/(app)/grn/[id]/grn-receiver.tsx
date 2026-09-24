@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Combobox } from "@/components/ui/combobox";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { MobileRowCard } from "@/components/ui/mobile-row-card";
 import { formatNumber } from "@/lib/utils";
@@ -47,10 +48,14 @@ export function GrnReceiver({
   canSeeFinancials,
   vendorComponentIds,
   vendorName,
+  vendorId,
   templateFieldsByTemplate,
   excludedFieldIdsByComponent,
   irnRows,
   submitIrnAction,
+  createComponentAction,
+  vendorOptions,
+  templateOptions,
 }: {
   grnId: string;
   postedLines: Posted[];
@@ -64,11 +69,16 @@ export function GrnReceiver({
   /** Components tagged to this GRN's vendor (via vendor_components) — narrows the manual picker. */
   vendorComponentIds: string[];
   vendorName: string | null;
+  vendorId?: string | null;
   templateFieldsByTemplate: Record<string, TemplateField[]>;
   /** Per-component field exclusions (opt-out) — fields listed here are skipped for that component. */
   excludedFieldIdsByComponent: Record<string, string[]>;
   irnRows: IrnRow[];
   submitIrnAction: (fd: FormData) => Promise<IrnActionResult>;
+  /** Optional: create a component inline from this GRN's receiving form. */
+  createComponentAction?: (fd: FormData) => Promise<ActionResult>;
+  vendorOptions?: { value: string; label: string }[];
+  templateOptions?: { value: string; label: string }[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -83,21 +93,32 @@ export function GrnReceiver({
   const [totalLength, setTotalLength] = React.useState("");
   const [totalWeight, setTotalWeight] = React.useState("");
   const [targetLotId, setTargetLotId] = React.useState("");
+  const [unitCost, setUnitCost] = React.useState("");
   const [showAllComponents, setShowAllComponents] = React.useState(false);
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
+
+  // Components created inline this session, merged on top of the server list.
+  const [extraComponents, setExtraComponents] = React.useState<Component[]>([]);
+  const [compDialogOpen, setCompDialogOpen] = React.useState(false);
+  const [compDialogError, setCompDialogError] = React.useState<string | null>(null);
+  const [compDialogPending, setCompDialogPending] = React.useState(false);
+  const allComponents = React.useMemo(
+    () => [...extraComponents, ...components.filter((c) => !extraComponents.some((e) => e.id === c.id))],
+    [components, extraComponents],
+  );
 
   const hasVendorFilter = vendorComponentIds.length > 0;
   const vendorCompSet = React.useMemo(() => new Set(vendorComponentIds), [vendorComponentIds]);
   const pickerComponents = React.useMemo(
-    () => (hasVendorFilter && !showAllComponents ? components.filter((c) => vendorCompSet.has(c.id)) : components),
-    [components, hasVendorFilter, showAllComponents, vendorCompSet],
+    () => (hasVendorFilter && !showAllComponents ? allComponents.filter((c) => vendorCompSet.has(c.id) || extraComponents.some((e) => e.id === c.id)) : allComponents),
+    [allComponents, hasVendorFilter, showAllComponents, vendorCompSet, extraComponents],
   );
   const pickerComponentItems = React.useMemo(
     () => pickerComponents.map((c) => ({ value: c.id, label: `${c.component_no} — ${c.name}` })),
     [pickerComponents],
   );
 
-  const compMap = React.useMemo(() => new Map(components.map((c) => [c.id, c])), [components]);
+  const compMap = React.useMemo(() => new Map(allComponents.map((c) => [c.id, c])), [allComponents]);
   const selectedComp = manualComp ? compMap.get(manualComp) : undefined;
   const qt = selectedComp?.quantity_type ?? "nos";
   const trackingMode = selectedComp?.tracking_mode ?? "box";
@@ -134,6 +155,15 @@ export function GrnReceiver({
   const selectedPoLine = matchingPoLines.find((pl) => pl.po_line_id === selectedPoLineId);
   const enteredQty = qt === "nos" ? (Number(manualQty) || 0) : (derivedQty ?? 0);
   const overReceipt = !!selectedPoLine && enteredQty > selectedPoLine.remaining + 1e-6;
+  // A PO's price is what gets registered — a typed Unit cost can't coexist with a matched PO.
+  const poPriceConflict = !!selectedPoLineId && unitCost.trim() !== "";
+  const totalCost = React.useMemo(() => {
+    const uc = Number(unitCost);
+    if (!unitCost.trim() || !Number.isFinite(uc)) return null;
+    const qty = qt === "nos" ? Number(manualQty) || 0 : (derivedQty ?? 0);
+    if (!qty) return null;
+    return uc * qty;
+  }, [unitCost, manualQty, derivedQty, qt]);
 
   React.useEffect(() => {
     setSelectedPoLineId(matchingPoLines.length > 0 ? matchingPoLines[0].po_line_id : "");
@@ -142,6 +172,7 @@ export function GrnReceiver({
     setTotalLength("");
     setTotalWeight("");
     setTargetLotId("");
+    setUnitCost("");
     setAnswers({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualComp]);
@@ -153,6 +184,36 @@ export function GrnReceiver({
     setBusy(null);
     if (res?.error) { setError(res.error); return; }
     onOk?.(); router.refresh();
+  }
+
+  async function onCreateComponent(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!createComponentAction) return;
+    setCompDialogError(null);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    setCompDialogPending(true);
+    const res = await createComponentAction(fd);
+    setCompDialogPending(false);
+    if (res?.error) {
+      setCompDialogError(res.error);
+      return;
+    }
+    const newId = res.id;
+    if (newId) {
+      const comp: Component = {
+        id: newId,
+        component_no: String(fd.get("component_no") ?? "").trim(),
+        name: String(fd.get("name") ?? "").trim(),
+        quantity_type: "nos",
+        tracking_mode: "box",
+      };
+      setExtraComponents((prev) => [comp, ...prev]);
+      setManualComp(newId);
+    }
+    setCompDialogOpen(false);
+    form.reset();
+    router.refresh();
   }
 
   async function runIrn(fd: FormData, onOk?: () => void) {
@@ -181,6 +242,11 @@ export function GrnReceiver({
     // For length/weight, override qty_received with the computed total
     if (derivedQty !== null) fd.set("qty_received", String(derivedQty));
 
+    if (poPriceConflict) {
+      setError("A Purchase Order is attached to this line — clear the Unit cost field so the PO's price is the one registered.");
+      return;
+    }
+
     if (needsInspection) {
       const missing = templateFields.filter((f) => f.is_required && !answers[f.id]?.trim());
       if (missing.length > 0) {
@@ -201,6 +267,7 @@ export function GrnReceiver({
         setManualQty("1");
         setPieceCount(""); setTotalLength(""); setTotalWeight("");
         setTargetLotId("");
+        setUnitCost("");
         setAnswers({});
       });
       return;
@@ -215,6 +282,7 @@ export function GrnReceiver({
       setManualQty("1");
       setPieceCount(""); setTotalLength(""); setTotalWeight("");
       setTargetLotId("");
+      setUnitCost("");
     });
   }
 
@@ -232,7 +300,18 @@ export function GrnReceiver({
             {/* Component selector */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>Component</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Component</Label>
+                  {createComponentAction && (
+                    <button
+                      type="button"
+                      onClick={() => { setCompDialogError(null); setCompDialogOpen(true); }}
+                      className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline"
+                    >
+                      <Plus className="size-3" /> Can&apos;t find it? Create component
+                    </button>
+                  )}
+                </div>
                 <Combobox items={pickerComponentItems} name="component_id" required value={manualComp} onChange={setManualComp} placeholder="— component —" />
                 {hasVendorFilter && (
                   <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -277,8 +356,19 @@ export function GrnReceiver({
                       </div>
                       {canSeeFinancials && (
                         <div className="space-y-1.5">
-                          <Label>Unit cost (₹) — for comparison only, optional</Label>
-                          <Input name="unit_cost" type="number" step="any" />
+                          <Label>Unit cost (₹){selectedPoLineId ? " — clear this, the PO's price will be registered" : ""}</Label>
+                          <Input
+                            name="unit_cost"
+                            type="number"
+                            step="any"
+                            value={unitCost}
+                            onChange={(e) => setUnitCost(e.target.value)}
+                          />
+                          {totalCost !== null && !poPriceConflict && (
+                            <p className="text-xs text-muted-foreground">
+                              Total cost: <span className="font-medium text-foreground">₹{formatNumber(totalCost)}</span>
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -324,8 +414,19 @@ export function GrnReceiver({
                     </div>
                     {canSeeFinancials && (
                       <div className="space-y-1.5">
-                        <Label>Unit cost (₹/m) — for comparison only, optional</Label>
-                        <Input name="unit_cost" type="number" step="any" />
+                        <Label>Unit cost (₹/m){selectedPoLineId ? " — clear this, the PO's price will be registered" : ""}</Label>
+                        <Input
+                          name="unit_cost"
+                          type="number"
+                          step="any"
+                          value={unitCost}
+                          onChange={(e) => setUnitCost(e.target.value)}
+                        />
+                        {totalCost !== null && !poPriceConflict && (
+                          <p className="text-xs text-muted-foreground">
+                            Total cost: <span className="font-medium text-foreground">₹{formatNumber(totalCost)}</span>
+                          </p>
+                        )}
                       </div>
                     )}
                     {derivedPieceLength !== null && (
@@ -357,8 +458,19 @@ export function GrnReceiver({
                     </div>
                     {canSeeFinancials && (
                       <div className="space-y-1.5">
-                        <Label>Unit cost (₹/kg) — for comparison only, optional</Label>
-                        <Input name="unit_cost" type="number" step="any" />
+                        <Label>Unit cost (₹/kg){selectedPoLineId ? " — clear this, the PO's price will be registered" : ""}</Label>
+                        <Input
+                          name="unit_cost"
+                          type="number"
+                          step="any"
+                          value={unitCost}
+                          onChange={(e) => setUnitCost(e.target.value)}
+                        />
+                        {totalCost !== null && !poPriceConflict && (
+                          <p className="text-xs text-muted-foreground">
+                            Total cost: <span className="font-medium text-foreground">₹{formatNumber(totalCost)}</span>
+                          </p>
+                        )}
                       </div>
                     )}
                     {derivedPieceWeight !== null && (
@@ -458,7 +570,7 @@ export function GrnReceiver({
                     <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
                     <span>
                       <span className="font-medium">No open PO found for this component.</span>{" "}
-                      Raise a purchase order before receiving — this line cannot be posted without one.
+                      That&apos;s fine — this line will be received as stock with no PO attached.
                     </span>
                   </div>
                 )}
@@ -478,9 +590,19 @@ export function GrnReceiver({
               </p>
             )}
 
+            {poPriceConflict && (
+              <p className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-500" />
+                <span>
+                  A Purchase Order is attached — its price will be registered, not a typed Unit cost.
+                  Clear the Unit cost field above to continue.
+                </span>
+              </p>
+            )}
+
             <div className="flex items-center gap-2">
               <Button type="submit" variant="secondary"
-                loading={busy === "manual"} disabled={(qt !== "nos" && derivedQty === null) || (!!manualComp && !selectedPoLineId) || overReceipt}>
+                loading={busy === "manual"} disabled={(qt !== "nos" && derivedQty === null) || overReceipt || poPriceConflict}>
                 <Plus className="size-4" /> {needsInspection ? "Submit for inspection" : "Add line"}
               </Button>
             </div>
@@ -597,6 +719,74 @@ export function GrnReceiver({
             </TableBody>
           </Table>
         </section>
+      )}
+
+      {createComponentAction && (
+        <Dialog open={compDialogOpen} onClose={() => setCompDialogOpen(false)} title="New component" className="max-w-2xl">
+          <form onSubmit={onCreateComponent} className="space-y-4">
+            <input type="hidden" name="tracking_mode" value="box" />
+            <input type="hidden" name="quantity_type" value="nos" />
+            <input type="hidden" name="uom" value="Nos" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>WPC (Webber Part Code) *</Label>
+                <Input name="component_no" required placeholder="e.g. NZ-3600-02" autoFocus />
+              </div>
+              <div className="space-y-1.5">
+                <Label>MPN (Manufacturer Part No.)</Label>
+                <Input name="mpn" placeholder="e.g. 1N4148" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Name *</Label>
+                <Input name="name" required placeholder="Nozzle 2 inch" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Category</Label>
+                <Input name="type" placeholder="Nozzle, Fastener, Media…" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Grade</Label>
+                <Input name="grade" placeholder="MS, SS316, Brass…" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Spec</Label>
+                <Input name="spec" placeholder='e.g. 12", #150' />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Supplier</Label>
+                <Combobox items={vendorOptions ?? []} name="raw_supplier_id" defaultValue={vendorId ?? ""} placeholder="— none —" />
+                <span className="text-xs text-muted-foreground">Vendor this component is bought from.</span>
+              </div>
+              {canSeeFinancials && (
+                <div className="space-y-1.5">
+                  <Label>Standard cost (₹)</Label>
+                  <Input name="standard_cost" type="number" step="any" />
+                </div>
+              )}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Inspection template</Label>
+                <Select name="inspection_template_id" defaultValue="">
+                  <option value="">— none —</option>
+                  {(templateOptions ?? []).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </Select>
+                <span className="text-xs text-muted-foreground">Requires an IRN (inspection) before goods received at GRN become stock.</span>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Description</Label>
+              <textarea
+                name="description"
+                rows={3}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            {compDialogError && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{compDialogError}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setCompDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" loading={compDialogPending}>Create &amp; select</Button>
+            </div>
+          </form>
+        </Dialog>
       )}
     </div>
   );
