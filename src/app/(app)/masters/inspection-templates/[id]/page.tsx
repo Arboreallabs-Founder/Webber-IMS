@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile, canWriteMasters } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { TemplateFieldEditor, type TemplateField } from "./template-field-editor";
 import { EligibilityMatrix } from "./eligibility-matrix";
 import { upsertTemplateField, removeTemplateField, toggleFieldEligibility } from "../actions";
@@ -50,12 +49,7 @@ export default async function InspectionTemplateDetailPage({ params }: { params:
         title={template.name}
         description={template.description ?? undefined}
         action={
-          <div className="flex items-center gap-2">
-            <Link href={`/masters/inspection-templates/${id}/print`} className={buttonVariants({ variant: "outline" })}>
-              <Printer className="size-4" /> Print blank template
-            </Link>
-            {template.is_active ? <Badge variant="success">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}
-          </div>
+          template.is_active ? <Badge variant="success">Active</Badge> : <Badge variant="secondary">Inactive</Badge>
         }
       />
 
