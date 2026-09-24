@@ -27,7 +27,6 @@ export async function submitIrn(fd: FormData): Promise<ActionResult> {
   const qty = num(fd, "qty_received");
   if (!qty || qty <= 0) return { error: "Enter a received quantity." };
   const po_line_id = String(fd.get("po_line_id") ?? "") || null;
-  if (!po_line_id) return { error: "Select an open PO line — receiving without a PO is not allowed." };
 
   let answers: unknown = [];
   try {

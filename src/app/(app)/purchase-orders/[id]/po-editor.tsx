@@ -32,7 +32,7 @@ type Line = {
 };
 type Opt = { id: string; label: string };
 type Suggestion = { vendor: string; price: number | null };
-type ComponentOpt = { id: string; component_no: string; name: string; is_job_work?: boolean; quantity_type?: string | null; uom?: string | null };
+type ComponentOpt = { id: string; component_no: string; name: string; quantity_type?: string | null; uom?: string | null };
 
 const DRAFT_STATUS_CHOICES = ["draft", "cancelled"];
 
@@ -96,7 +96,7 @@ export function PoEditor({
     [components, hasVendorFilter, showAllComponents, vendorCompSet],
   );
   const pickerComponentItems = React.useMemo(
-    () => pickerComponents.map((c) => ({ value: c.id, label: `${c.component_no} — ${c.name}${c.is_job_work ? " (raw)" : ""}` })),
+    () => pickerComponents.map((c) => ({ value: c.id, label: `${c.component_no} — ${c.name}` })),
     [pickerComponents],
   );
 

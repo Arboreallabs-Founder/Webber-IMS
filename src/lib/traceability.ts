@@ -16,7 +16,6 @@ export type Lot = {
 export type LineageEntry = { lot_id: string; lot_code: string; jw_stage: string | null; created_at: string };
 export type PurchaseOrder = { po_no: string | null; po_date: string | null; raised_by: string | null; vendor_name: string | null; qty_ordered: number | null; rate: number | null };
 export type Grn = { grn_no: string | null; challan_no: string | null; invoice_no: string | null; received_by: string | null; received_at: string | null; is_untagged: boolean | null };
-export type JobWork = { jw_no: string; vendor_name: string | null; sent_date: string | null; expected_date: string | null; status: string; qty_sent: number; qty_returned: number; raw_lot_code: string | null; completed_lot_code: string | null };
 export type ChecklistEntry = { label: string; field_type: string; value: string | null };
 export type Irn = {
   irn_no: string; status: string; template_name: string | null; generated_by: string | null; generated_at: string;
@@ -24,4 +23,4 @@ export type Irn = {
   checklist: ChecklistEntry[];
 };
 export type Movement = { movement_type: string; qty: number; project_no: string | null; reference_type: string | null; reference_id: string | null; performed_by: string | null; performed_at: string; note: string | null };
-export type Traceability = { lot: Lot; lineage: LineageEntry[]; purchase_order: PurchaseOrder | null; grn: Grn | null; job_work: JobWork[]; irn: Irn[]; movements: Movement[] };
+export type Traceability = { lot: Lot; lineage: LineageEntry[]; purchase_order: PurchaseOrder | null; grn: Grn | null; irn: Irn[]; movements: Movement[] };

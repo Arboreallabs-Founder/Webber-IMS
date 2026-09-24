@@ -61,7 +61,7 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
     if (r.component_id && r.rate != null) lastRateByComponent[r.component_id] = Number(r.rate);
   }
 
-  const compLabel = new Map((components ?? []).map((c) => [c.id, `${c.component_no} — ${c.name}${c.is_job_work ? " (raw)" : ""}`]));
+  const compLabel = new Map((components ?? []).map((c) => [c.id, `${c.component_no} — ${c.name}`]));
   const vName = new Map((vendors ?? []).map((v) => [v.id, v.name]));
   const custName = new Map((customers ?? []).map((c) => [c.id, c.name]));
 

@@ -28,7 +28,6 @@ export const NAV: NavGroup[] = [
       { label: "Projects / Orders", href: "/projects", status: "live" },
       { label: "Requisitions", href: "/requisitions", status: "live" },
       { label: "Purchase Orders", href: "/purchase-orders", status: "live" },
-      { label: "Job Work", href: "/job-work", status: "live" },
       { label: "Goods Receipt", href: "/grn", status: "live" },
       { label: "Inventory", href: "/inventory", status: "live" },
       { label: "Traceability", href: "/traceability", status: "live" },

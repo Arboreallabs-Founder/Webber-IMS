@@ -19,7 +19,6 @@ type Row = {
   ordered: number;
   on_hand: number;
   consumed: number;
-  sent_to_jw: number;
   shortfall: number;
 };
 
@@ -91,7 +90,6 @@ export function ShortfallPanel({ projectId, rows, canProcure }: { projectId: str
             <TableHead>On hand</TableHead>
             <TableHead>Ordered</TableHead>
             <TableHead>WIP</TableHead>
-            <TableHead>Sent to JW</TableHead>
             <TableHead>Shortfall</TableHead>
             <TableHead>Status</TableHead>
           </TableRow>
@@ -104,7 +102,6 @@ export function ShortfallPanel({ projectId, rows, canProcure }: { projectId: str
               <TableCell>{formatNumber(r.on_hand)}</TableCell>
               <TableCell className="text-muted-foreground">{formatNumber(r.ordered)}</TableCell>
               <TableCell className="text-muted-foreground">{formatNumber(r.consumed)}</TableCell>
-              <TableCell className="text-muted-foreground">{formatNumber(r.sent_to_jw)}</TableCell>
               <TableCell>
                 {r.shortfall > 0
                   ? <Badge variant="destructive">{formatNumber(r.shortfall)}</Badge>
@@ -115,7 +112,6 @@ export function ShortfallPanel({ projectId, rows, canProcure }: { projectId: str
                   <span className="inline-flex items-center gap-1 text-xs text-green-700">
                     <CheckCircle2 className="size-3.5" /> Covered
                     {r.on_hand <= 0 && r.consumed > 0 ? " (in WIP)" : ""}
-                    {r.on_hand <= 0 && r.consumed <= 0 && r.sent_to_jw > 0 ? " (in job-work)" : ""}
                   </span>
                 ) : r.on_hand > 0 ? (
                   <span className="inline-flex items-center gap-1 text-xs text-amber-700">

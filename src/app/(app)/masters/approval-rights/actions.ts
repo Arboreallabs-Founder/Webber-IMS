@@ -15,7 +15,7 @@ export async function upsert(fd: FormData): Promise<ActionResult> {
   const document_type = String(fd.get("document_type") ?? "");
   const approver_order = Number(fd.get("approver_order") ?? 0);
   const user_id = String(fd.get("user_id") ?? "");
-  if (!["po", "grn", "job_work"].includes(document_type)) return { error: "Pick a document type." };
+  if (!["po", "grn"].includes(document_type)) return { error: "Pick a document type." };
   if (![2, 3].includes(approver_order)) return { error: "Pick a slot." };
   if (!user_id) return { error: "Pick an approver." };
 

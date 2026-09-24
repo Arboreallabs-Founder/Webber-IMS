@@ -84,7 +84,6 @@ async function AllGrnsTab() {
   const rows: GrnRow[] = (grns ?? []).map((g) => ({
     id: g.id,
     grn_no: g.grn_no,
-    is_job_work: g.is_job_work,
     vendor_name: g.vendor_id ? vName.get(g.vendor_id) ?? null : null,
     challan_no: g.challan_no,
     invoice_no: g.invoice_no,

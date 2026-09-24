@@ -6,7 +6,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Package, FileText, Wrench, ClipboardCheck, History } from "lucide-react";
+import { Package, FileText, ClipboardCheck, History } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -39,7 +39,6 @@ export function TraceabilityResult({ data, finance }: { data: Traceability; fina
             <Info label="Status" value={data.lot.status} />
             <Info label="On hand" value={`${formatNumber(data.lot.qty_on_hand)} / ${formatNumber(data.lot.qty_initial)} initial`} />
             {finance && <Info label="Unit cost" value={data.lot.unit_cost != null ? formatINR(data.lot.unit_cost) : "—"} />}
-            <Info label="Job-work stage" value={data.lot.jw_stage ?? "—"} />
             <Info label="Created" value={formatDateTime(data.lot.created_at)} />
           </div>
         </CardContent>
@@ -84,42 +83,7 @@ export function TraceabilityResult({ data, finance }: { data: Traceability; fina
               <Info label="Received" value={formatDateTime(data.grn?.received_at ?? null)} />
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No PO/GRN on record for this lot (e.g. created directly, such as a site purchase or job-work output).</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <Wrench className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Job work</h3>
-          </div>
-          {data.job_work.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Never sent for job work.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>JW No.</TableHead>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead>Sent</TableHead>
-                  <TableHead>Qty sent / returned</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.job_work.map((jw, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-mono text-xs">{jw.jw_no}</TableCell>
-                    <TableCell>{jw.vendor_name ?? "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(jw.sent_date)}</TableCell>
-                    <TableCell>{formatNumber(jw.qty_sent)} / {formatNumber(jw.qty_returned)}</TableCell>
-                    <TableCell><Badge variant="secondary">{jw.status}</Badge></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <p className="text-sm text-muted-foreground">No PO/GRN on record for this lot (e.g. created directly, such as a site purchase).</p>
           )}
         </CardContent>
       </Card>

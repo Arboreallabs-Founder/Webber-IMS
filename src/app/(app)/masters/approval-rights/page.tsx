@@ -7,7 +7,6 @@ import { upsert, remove } from "./actions";
 const DOC_TYPE_LABEL: Record<string, string> = {
   po: "Purchase Order",
   grn: "GRN",
-  job_work: "Job Work",
 };
 const SLOT_LABEL: Record<number, string> = { 2: "2nd signer", 3: "3rd signer" };
 
@@ -60,7 +59,7 @@ export default async function ApprovalRightsPage() {
     <div>
       <PageHeader
         title="Approval Rights"
-        description="Who must sign off Purchase Orders, GRNs, and Job-Work orders before the creator's own signature (slot 1) is enough. The creator always signs first; a document is sent/printable once every configured slot below is signed."
+        description="Who must sign off Purchase Orders and GRNs before the creator's own signature (slot 1) is enough. The creator always signs first; a document is sent/printable once every configured slot below is signed."
       />
       <CrudManager
         title="Approval Rights"

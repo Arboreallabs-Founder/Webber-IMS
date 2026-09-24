@@ -22,7 +22,7 @@ export default async function MySignaturePage() {
       </Link>
       <PageHeader
         title="My Signature"
-        description="Saved here, used to sign off Purchase Orders, GRNs, and Job-Work orders."
+        description="Saved here, used to sign off Purchase Orders and GRNs."
       />
       <SignatureManager signatures={signatures ?? []} />
 

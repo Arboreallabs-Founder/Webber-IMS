@@ -15,7 +15,6 @@ import { LineItemEditor, type VariantParam } from "./line-item-editor";
 import { BomPanel } from "./bom-panel";
 import { IssuedPanel } from "./issued-panel";
 import { StockStatusPanel, type StockStatusRow } from "./stock-status-panel";
-import { JobWorkPanel, type JwStockRow, type JwOrderRow } from "./job-work-panel";
 import { ShortfallPanel } from "./shortfall-panel";
 import { PhaseBanner } from "./phase-banner";
 import { SitePurchaseForm } from "./site-purchase-form";
@@ -62,7 +61,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     { data: costing },
     { data: shortfall },
     { data: consumption },
-    { data: myJwOrders },
   ] = await Promise.all([
     supabase.from("projects").select("*").eq("id", id).single(),
     supabase.from("products").select("id, sku_code, model_name").order("sku_code"),
@@ -80,10 +78,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       .select("component_id, required_qty, ordered_qty, on_hand, consumed_qty, sent_to_jw_qty, shortfall_qty")
       .eq("project_id", id),
     supabase.from("v_project_consumption").select("component_id, consumed_qty").eq("project_id", id),
-    supabase.from("job_work_orders")
-      .select("id, jw_no, vendor_id, status, sent_date, expected_date")
-      .eq("project_id", id)
-      .order("created_at", { ascending: false }),
   ]);
   if (!project) notFound();
   const vendors = vendorsAll.filter((v) => v.is_active);
@@ -101,7 +95,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       ordered: Number(s.ordered_qty ?? 0),
       on_hand: Number(s.on_hand ?? 0),
       consumed: Number(s.consumed_qty ?? 0),
-      sent_to_jw: Number(s.sent_to_jw_qty ?? 0),
       shortfall: Number(s.shortfall_qty ?? 0),
     }))
     .sort((a, b) => b.shortfall - a.shortfall);
@@ -125,20 +118,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     quantity: li.quantity,
   }));
 
-  // myJwOrders already fetched in wave 1 — derive the ids wave 2 needs.
-  const myJwOrderIds = (myJwOrders ?? []).map((o) => o.id);
-  const openJwOrderIds = new Set((myJwOrders ?? []).filter((o) => o.status === "sent" || o.status === "partial").map((o) => o.id));
-
-  // Wave 2 (parallel, needs wave 1's bom.id / myJwOrderIds) — these two
-  // queries don't depend on each other, only on wave 1's results.
-  const [{ data: rawBomLines }, { data: myJwLines }] = await Promise.all([
-    bom
-      ? supabase.from("bom_lines").select("id, component_id, required_qty, source, note").eq("bom_id", bom.id).order("source")
-      : Promise.resolve({ data: null }),
-    myJwOrderIds.length
-      ? supabase.from("job_work_lines").select("jw_order_id, component_id, qty_sent, qty_returned").in("jw_order_id", myJwOrderIds)
-      : Promise.resolve({ data: [] }),
-  ]);
+  const { data: rawBomLines } = bom
+    ? await supabase.from("bom_lines").select("id, component_id, required_qty, source, note").eq("bom_id", bom.id).order("source")
+    : { data: null };
 
   let bomLines: { id: string; component_id: string | null; component_label: string; required_qty: number; source: string; note: string | null }[] = [];
   const plannedByComponent = new Map<string, number>();
@@ -155,13 +137,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       if (!l.component_id) continue;
       plannedByComponent.set(l.component_id, (plannedByComponent.get(l.component_id) ?? 0) + Number(l.required_qty ?? 0));
     }
-  }
-
-  const sentOutstanding = new Map<string, number>();
-  for (const l of myJwLines ?? []) {
-    if (!l.component_id || !openJwOrderIds.has(l.jw_order_id)) continue;
-    const out = Number(l.qty_sent ?? 0) - Number(l.qty_returned ?? 0);
-    sentOutstanding.set(l.component_id, (sentOutstanding.get(l.component_id) ?? 0) + out);
   }
 
   // Materials issued: actual consumption (from wave 1's v_project_consumption) vs the
@@ -184,25 +159,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   const plannedComponentIds = [...plannedByComponent.keys()];
 
-  // Wave 3 (parallel, needs wave 2's plannedComponentIds). Job-work component
-  // ids — needed before Stock status below, so JW components (which have
-  // their own dedicated, stage-aware panel) can be excluded from that table
-  // instead of showing a misleading "Available"/"Blocked" badge for stock
-  // that's still raw and can't actually be consumed — and stock-status lots.
-  const [{ data: jwComps }, { data: statusLots }] = await Promise.all([
-    plannedComponentIds.length
-      ? supabase.from("components").select("id, jw_vendor_id").in("id", plannedComponentIds).eq("is_job_work", true)
-      : Promise.resolve({ data: [] }),
-    plannedComponentIds.length
-      ? supabase
-          .from("inventory_lots")
-          .select("component_id, qty_on_hand, status, project_id, jw_stage")
-          .in("component_id", plannedComponentIds)
-          .neq("status", "consumed")
-          .gt("qty_on_hand", 0)
-      : Promise.resolve({ data: [] }),
-  ]);
-  const jwComponentIds = new Set((jwComps ?? []).map((c) => c.id));
+  // Wave 3 (parallel, needs wave 2's plannedComponentIds) — stock-status lots.
+  const { data: statusLots } = plannedComponentIds.length
+    ? await supabase
+        .from("inventory_lots")
+        .select("component_id, qty_on_hand, status, project_id")
+        .in("component_id", plannedComponentIds)
+        .neq("status", "consumed")
+        .gt("qty_on_hand", 0)
+    : { data: [] };
 
   const otherProjectIds = [...new Set((statusLots ?? [])
     .filter((l) => l.project_id && l.project_id !== id)
@@ -219,7 +184,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   ]));
 
   const stockStatusRows: StockStatusRow[] = plannedComponentIds
-    .filter((cid) => !jwComponentIds.has(cid))
     .map((cid) => {
       const required = plannedByComponent.get(cid) ?? 0;
       const lots = (statusLots ?? []).filter((l) => l.component_id === cid);
@@ -255,64 +219,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       };
     })
     .sort((a, b) => a.component_label.localeCompare(b.component_label));
-
-  // True when every planned component is job-work (Stock status ends up empty
-  // not because there's no BOM, but because they all belong in Job work below).
-  const allJobWork = plannedComponentIds.length > 0 && stockStatusRows.length === 0 && jwComponentIds.size === plannedComponentIds.length;
-
-  // Job-work vendor breakdown — myJwOrders/myJwLines/sentOutstanding were
-  // already computed above (wave 1 / wave 2).
-  const jwVendorIds = [...new Set((jwComps ?? []).map((c) => c.jw_vendor_id).filter(Boolean))] as string[];
-  const jwOrderVendorIds = [...new Set((myJwOrders ?? []).map((o) => o.vendor_id).filter(Boolean))] as string[];
-  const jwVendorIdSet = new Set([...jwVendorIds, ...jwOrderVendorIds]);
-  const jwVendors = vendorsAll.filter((v) => jwVendorIdSet.has(v.id));
-  const jwVendorName = new Map((jwVendors ?? []).map((v) => [v.id, v.name]));
-
-  const jwStockRows: JwStockRow[] = [...jwComponentIds]
-    .map((cid) => {
-      const required = plannedByComponent.get(cid) ?? 0;
-      const lots = (statusLots ?? []).filter((l) => l.component_id === cid && (!l.project_id || l.project_id === id));
-      const rawAvailable = lots.filter((l) => l.jw_stage === "raw").reduce((s, l) => s + Number(l.qty_on_hand ?? 0), 0);
-      const completedAvailable = lots.filter((l) => l.jw_stage === "completed").reduce((s, l) => s + Number(l.qty_on_hand ?? 0), 0);
-      const sent = sentOutstanding.get(cid) ?? 0;
-
-      let status: JwStockRow["status"];
-      if (completedAvailable >= required) status = "ready";
-      else if (sent > 0) status = "awaiting_return";
-      else if (rawAvailable > 0) status = "needs_job_work";
-      else status = "no_stock";
-
-      return {
-        component_id: cid,
-        component_label: componentLabel.get(cid) ?? "—",
-        required,
-        raw_available: rawAvailable,
-        sent_outstanding: sent,
-        completed_available: completedAvailable,
-        status,
-      };
-    })
-    .sort((a, b) => a.component_label.localeCompare(b.component_label));
-
-  const jwOrderRows: JwOrderRow[] = (myJwOrders ?? []).map((o) => ({
-    id: o.id,
-    jw_no: o.jw_no,
-    vendor_name: o.vendor_id ? jwVendorName.get(o.vendor_id) ?? null : null,
-    status: o.status,
-    sent_date: o.sent_date,
-    expected_date: o.expected_date,
-  }));
-
-  // Components whose covering stock right now is raw or in-transit-to-vendor,
-  // not completed — labeled "Name (raw)" in the BOM and shortfall panels.
-  const rawOnlyComponentIds = new Set(
-    jwStockRows
-      .filter((r) => r.completed_available <= 0 && (r.raw_available > 0 || r.sent_outstanding > 0))
-      .map((r) => r.component_id)
-  );
-  const withRaw = (cid: string | null, label: string) => (cid && rawOnlyComponentIds.has(cid) ? `${label} (raw)` : label);
-  bomLines = bomLines.map((l) => ({ ...l, component_label: withRaw(l.component_id, l.component_label) }));
-  shortfallRows = shortfallRows.map((r) => ({ ...r, component_label: withRaw(r.component_id, r.component_label) }));
 
   return (
     <div>
@@ -392,23 +298,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         />
       </CollapsibleSection>
 
-      {jwStockRows.length > 0 && (
-        <CollapsibleSection
-          id="job-work"
-          title="Job work"
-          defaultOpen={jwStockRows.some((r) => r.status === "needs_job_work")}
-        >
-          <JobWorkPanel projectId={id} rows={jwStockRows} orders={jwOrderRows} canWrite={canWrite} />
-        </CollapsibleSection>
-      )}
-
       <CollapsibleSection id="stock-status" title="Stock status & blocking" defaultOpen>
         <StockStatusPanel
           projectId={id}
           bomId={bom?.id ?? null}
           bomApproved={bom?.status === "approved"}
           rows={stockStatusRows}
-          allJobWork={allJobWork}
           canWrite={canWrite}
           blockAction={blockStockForBom}
         />

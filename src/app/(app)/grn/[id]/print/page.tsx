@@ -71,14 +71,8 @@ export default async function GrnPrintPage({ params }: { params: Promise<{ id: s
 
   const [{ data: vendor }, { data: grnLines }] = await Promise.all([
     grn.vendor_id ? supabase.from("vendors").select("name").eq("id", grn.vendor_id).maybeSingle() : Promise.resolve({ data: null }),
-    supabase.from("grn_lines").select("id, component_id, po_line_id, jw_line_id, qty_received").eq("grn_id", grnId).order("created_at"),
+    supabase.from("grn_lines").select("id, component_id, po_line_id, qty_received").eq("grn_id", grnId).order("created_at"),
   ]);
-
-  const jwLineIds = [...new Set((grnLines ?? []).map((l) => l.jw_line_id).filter(Boolean))] as string[];
-  const { data: jwLines } = jwLineIds.length
-    ? await supabase.from("job_work_lines").select("id, job_work_orders(jw_no)").in("id", jwLineIds)
-    : { data: [] };
-  const jwNos = [...new Set((jwLines ?? []).map((l) => (l.job_work_orders as unknown as { jw_no: string } | null)?.jw_no).filter(Boolean))] as string[];
 
   const componentIds = [...new Set((grnLines ?? []).map((l) => l.component_id).filter(Boolean))] as string[];
   const poLineIds = [...new Set((grnLines ?? []).map((l) => l.po_line_id).filter(Boolean))] as string[];
@@ -201,7 +195,7 @@ export default async function GrnPrintPage({ params }: { params: Promise<{ id: s
           <div className="p-2"><span className="font-semibold">Vendor:</span> {vendor?.name ?? "—"}</div>
           <div className="p-2"><span className="font-semibold">Date:</span> {formatDateDDMMYYYY(grn.received_at)}</div>
           <div className="p-2">
-            <span className="font-semibold">{grn.is_job_work ? "JW No.:" : "PO No.:"}</span> {grn.is_job_work ? (jwNos.length ? jwNos.join(", ") : "—") : poNos.length ? poNos.join(", ") : "—"}
+            <span className="font-semibold">PO No.:</span> {poNos.length ? poNos.join(", ") : "—"}
           </div>
           <div className="p-2"><span className="font-semibold">Challan No.:</span> {grn.challan_no ?? "—"}</div>
           <div className="p-2"><span className="font-semibold">Invoice No.:</span> {grn.invoice_no ?? "—"}</div>

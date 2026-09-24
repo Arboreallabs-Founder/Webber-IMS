@@ -5,11 +5,11 @@ import { Card, CardContent } from "@/components/ui/card";
 
 const MASTERS = [
   { label: "BOM Builder", href: "/masters/bom-builder", description: "Create, edit, duplicate, and delete product BOMs, variants, categories, and sub-assemblies.", icon: Hammer },
-  { label: "Components", href: "/masters/components", description: "Component numbers, attributes, QR/lot tracking, job-work flags.", icon: Wrench },
+  { label: "Components", href: "/masters/components", description: "Component numbers, attributes, and QR/lot tracking.", icon: Wrench },
   { label: "Inspection Templates", href: "/masters/inspection-templates", description: "Per-item receiving checklist, gated by IRN approval.", icon: ClipboardCheck },
   { label: "Vendors", href: "/masters/vendors", description: "Suppliers, contact details, and supplied components.", icon: Truck },
   { label: "Customers", href: "/masters/customers", description: "Customer master for projects/orders.", icon: Users },
-  { label: "Approval Rights", href: "/masters/approval-rights", description: "Who must sign off POs, GRNs, and Job-Work orders.", icon: ShieldCheck },
+  { label: "Approval Rights", href: "/masters/approval-rights", description: "Who must sign off POs and GRNs.", icon: ShieldCheck },
 ];
 
 export default function MasterDataPage() {
