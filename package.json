@@ -11,6 +11,7 @@
     "import": "tsx src/lib/import/run.ts",
     "import:bom": "tsx src/lib/import/import-annotated-bom.ts",
     "import:bom-legacy": "tsx src/lib/import/import-bom.ts",
+    "import:components-bom": "tsx src/lib/import/import-components-bom.ts",
     "verify:bom": "tsx src/lib/import/verify-bom.ts",
     "seed:admin": "tsx src/lib/import/seed-admin.ts"
   },
