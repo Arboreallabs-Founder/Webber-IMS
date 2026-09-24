@@ -46,7 +46,7 @@ async function downloadPoRegisterExcel(rows: PoRegisterRow[], finance: boolean) 
   // Rate / Amount sit right after "PO No." and are only included for roles that
   // can see financials.
   const headers = [
-    "Sr. No.", "Component No.", "Material Description", "UOM",
+    "Sr. No.", "WPC", "Material Description", "UOM",
     "PO No.",
     ...(finance ? ["Rate", "Amount"] : []),
     "PO Date", "Expected Date", "Project No.", "Ordered Qty", "Received Qty", "Remaining Qty",

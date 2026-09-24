@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const FIELDS = {
   component_no: "string",
+  mpn: "string",
   name: "string",
   description: "string",
   type: "string",
@@ -13,23 +14,8 @@ const FIELDS = {
   uom: "string",
   quantity_type: "string",
   tracking_mode: "string",
-  nominal_size: "string",
-  od_mm: "number",
-  id_mm: "number",
-  thk_mm: "number",
-  width_mm: "number",
-  length_mm: "number",
-  by_weight: "boolean",
-  weight_uom: "string",
-  cut_from_plate: "boolean",
-  is_serialized: "boolean",
-  reorder_level: "number",
-  standard_cost: "number",
-  // job work
-  is_job_work: "boolean",
   raw_supplier_id: "string",
-  jw_vendor_id: "string",
-  jw_rate: "number",
+  standard_cost: "number",
   inspection_template_id: "string",
 } as const;
 
@@ -37,11 +23,11 @@ export async function upsert(fd: FormData): Promise<ActionResult> {
   const res = await upsertRecord("components", FIELDS, fd);
   if (res.error) return res;
 
-  // A raw supplier implies that vendor supplies this component — keep
+  // A supplier tag implies that vendor supplies this component — keep
   // vendor_components (which drives the GRN vendor-scoped picker and
   // vendor suggestions) in sync. One-directional only: never removes a
   // previously-added tag, since a component can have more than one valid
-  // supplier and changing the "primary" raw supplier doesn't invalidate that.
+  // supplier and changing the "primary" supplier doesn't invalidate that.
   const rawSupplierId = String(fd.get("raw_supplier_id") ?? "").trim();
   const componentId = res.id ?? String(fd.get("id") ?? "");
   if (rawSupplierId && componentId) {

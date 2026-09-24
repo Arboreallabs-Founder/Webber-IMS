@@ -687,30 +687,21 @@ export function TemplateLineEditor({
       {createComponentAction && (
         <Dialog open={compDialogOpen} onClose={() => setCompDialogOpen(false)} title="New component" className="max-w-lg">
           <form onSubmit={onCreateComponent} className="space-y-4">
+            <input type="hidden" name="tracking_mode" value="box" />
+            <input type="hidden" name="quantity_type" value="nos" />
+            <input type="hidden" name="uom" value="Nos" />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Component No. *</Label>
+                <Label>WPC (Webber Part Code) *</Label>
                 <Input name="component_no" required placeholder="e.g. NZ-3600-02" />
               </div>
               <div className="space-y-1.5">
                 <Label>Name *</Label>
                 <Input name="name" required placeholder="Nozzle 2 inch" />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label>Category</Label>
                 <Input name="type" placeholder="Nozzle, Fastener, Media…" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>UoM</Label>
-                <Input name="uom" placeholder="Nos, Mtr, Kg…" defaultValue="Nos" />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>QR / Lot tracking</Label>
-                <Select name="tracking_mode" defaultValue="item">
-                  <option value="item">Item — QR per piece</option>
-                  <option value="box">Box — QR on the box</option>
-                  <option value="bulk">Bulk — measured</option>
-                </Select>
               </div>
             </div>
             {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -730,7 +721,7 @@ export function TemplateLineEditor({
               a component with its own BOM. Its parts move into that sub-BOM, and it can then be built and stocked on its own.
             </p>
             <div className="space-y-1.5">
-              <Label>Component No. (optional)</Label>
+              <Label>WPC (optional)</Label>
               <Input name="component_no" placeholder="auto-generated if left blank" />
             </div>
             {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

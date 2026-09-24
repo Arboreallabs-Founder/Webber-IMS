@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       approval_rights: {
@@ -432,13 +457,6 @@ export type Database = {
             foreignKeyName: "boms_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "boms_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -578,6 +596,7 @@ export type Database = {
           jw_rate: number | null
           jw_vendor_id: string | null
           length_mm: number | null
+          mpn: string | null
           name: string
           nominal_size: string | null
           od_mm: number | null
@@ -613,6 +632,7 @@ export type Database = {
           jw_rate?: number | null
           jw_vendor_id?: string | null
           length_mm?: number | null
+          mpn?: string | null
           name: string
           nominal_size?: string | null
           od_mm?: number | null
@@ -648,6 +668,7 @@ export type Database = {
           jw_rate?: number | null
           jw_vendor_id?: string | null
           length_mm?: number | null
+          mpn?: string | null
           name?: string
           nominal_size?: string | null
           od_mm?: number | null
@@ -1019,13 +1040,6 @@ export type Database = {
             foreignKeyName: "grn_lines_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "grn_lines_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -1258,10 +1272,7 @@ export type Database = {
           location: string | null
           lot_code: string
           parent_lot_id: string | null
-          piece_count: number | null
-          piece_length: number | null
           piece_weight: number | null
-          piece_width: number | null
           project_id: string | null
           qty_initial: number
           qty_on_hand: number
@@ -1282,10 +1293,7 @@ export type Database = {
           location?: string | null
           lot_code: string
           parent_lot_id?: string | null
-          piece_count?: number | null
-          piece_length?: number | null
           piece_weight?: number | null
-          piece_width?: number | null
           project_id?: string | null
           qty_initial?: number
           qty_on_hand?: number
@@ -1306,10 +1314,7 @@ export type Database = {
           location?: string | null
           lot_code?: string
           parent_lot_id?: string | null
-          piece_count?: number | null
-          piece_length?: number | null
           piece_weight?: number | null
-          piece_width?: number | null
           project_id?: string | null
           qty_initial?: number
           qty_on_hand?: number
@@ -1402,13 +1407,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "inventory_lots_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
           },
           {
             foreignKeyName: "inventory_lots_project_id_fkey"
@@ -1703,13 +1701,6 @@ export type Database = {
             foreignKeyName: "irns_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "irns_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -1949,13 +1940,6 @@ export type Database = {
             foreignKeyName: "job_work_orders_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "job_work_orders_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -2074,13 +2058,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notifications_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
           },
           {
             foreignKeyName: "notifications_project_id_fkey"
@@ -2232,13 +2209,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "po_lines_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
           },
           {
             foreignKeyName: "po_lines_project_id_fkey"
@@ -2489,13 +2459,6 @@ export type Database = {
             foreignKeyName: "project_activities_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "project_activities_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -2571,13 +2534,6 @@ export type Database = {
             foreignKeyName: "project_documents_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "project_documents_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -2642,13 +2598,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_line_items_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
           },
           {
             foreignKeyName: "project_line_items_project_id_fkey"
@@ -3016,13 +2965,6 @@ export type Database = {
             foreignKeyName: "requisitions_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "requisitions_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -3213,13 +3155,6 @@ export type Database = {
             foreignKeyName: "site_purchases_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "site_purchases_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -3365,13 +3300,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "stock_movements_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
           },
           {
             foreignKeyName: "stock_movements_project_id_fkey"
@@ -3607,6 +3535,7 @@ export type Database = {
           is_serialized: boolean | null
           jw_vendor_id: string | null
           length_mm: number | null
+          mpn: string | null
           name: string | null
           nominal_size: string | null
           od_mm: number | null
@@ -3640,6 +3569,7 @@ export type Database = {
           is_serialized?: boolean | null
           jw_vendor_id?: string | null
           length_mm?: number | null
+          mpn?: string | null
           name?: string | null
           nominal_size?: string | null
           od_mm?: number | null
@@ -3673,6 +3603,7 @@ export type Database = {
           is_serialized?: boolean | null
           jw_vendor_id?: string | null
           length_mm?: number | null
+          mpn?: string | null
           name?: string | null
           nominal_size?: string | null
           od_mm?: number | null
@@ -3875,13 +3806,6 @@ export type Database = {
             foreignKeyName: "grn_lines_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "grn_lines_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -4011,13 +3935,6 @@ export type Database = {
             foreignKeyName: "inventory_lots_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "inventory_lots_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -4095,48 +4012,6 @@ export type Database = {
           uncovered_qty: number | null
         }
         Relationships: []
-      }
-      v_overdue_activities: {
-        Row: {
-          activity: string | null
-          activity_id: string | null
-          days_overdue: number | null
-          planned_date: string | null
-          project_id: string | null
-          project_no: string | null
-          responsibility: string | null
-          status: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_activities_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_activities_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "project_activities_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "v_project_schedule"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "project_activities_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "v_projects_safe"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       v_po_lines_safe: {
         Row: {
@@ -4242,13 +4117,6 @@ export type Database = {
             foreignKeyName: "po_lines_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "po_lines_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -4339,13 +4207,6 @@ export type Database = {
             foreignKeyName: "po_lines_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "po_lines_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -4419,13 +4280,6 @@ export type Database = {
             foreignKeyName: "stock_movements_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
-            referencedRelation: "v_project_costing"
-            referencedColumns: ["project_id"]
-          },
-          {
-            foreignKeyName: "stock_movements_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
             referencedRelation: "v_project_schedule"
             referencedColumns: ["project_id"]
           },
@@ -4437,18 +4291,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      v_project_costing: {
-        Row: {
-          consumed_value: number | null
-          customer_po_value: number | null
-          ordered_value: number | null
-          project_id: string | null
-          project_no: string | null
-          received_value: number | null
-          status: Database["public"]["Enums"]["project_status"] | null
-        }
-        Relationships: []
       }
       v_project_schedule: {
         Row: {
@@ -4644,9 +4486,7 @@ export type Database = {
         Row: {
           avg_lead_time_days: number | null
           completed_pos: number | null
-          late_lines: number | null
           name: string | null
-          on_time_lines: number | null
           open_pos: number | null
           rating: number | null
           received_lines: number | null
@@ -4901,13 +4741,16 @@ export type Database = {
           version: string
         }[]
       }
+      duplicate_product_bom: {
+        Args: { p_model: string; p_sku: string; p_src_template: string }
+        Returns: string
+      }
       fiscal_year_label: { Args: { d?: string }; Returns: string }
       get_lot_traceability: { Args: { p_lot_code: string }; Returns: Json }
       issue_requisition: {
         Args: { p_req_id: string; p_user_id: string }
         Returns: Json
       }
-      next_fg_no: { Args: never; Returns: string }
       next_grn_no: { Args: never; Returns: string }
       next_irn_no: { Args: never; Returns: string }
       next_jw_grn_no: { Args: never; Returns: string }
@@ -4932,10 +4775,6 @@ export type Database = {
           sent_to_jw_qty: number
           shortfall_qty: number
         }[]
-      }
-      duplicate_product_bom: {
-        Args: { p_model: string; p_sku: string; p_src_template: string }
-        Returns: string
       }
       promote_assembly_line: {
         Args: { p_component_no?: string; p_line: string }
@@ -5030,7 +4869,7 @@ export type Database = {
         | "closed"
         | "on_hold"
       quantity_type: "nos" | "length" | "area" | "weight"
-      req_status: "open" | "partially_issued" | "issued" | "closed"
+      req_status: "open" | "partially_ordered" | "ordered" | "closed"
       role: "admin" | "founder" | "team_lead" | "team_member"
       tracking_mode: "item" | "box" | "bulk"
     }
@@ -5048,12 +4887,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5077,11 +4916,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5102,11 +4941,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5127,11 +4966,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5144,11 +4983,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5158,6 +4997,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       bom_line_source: ["template", "manual", "site_purchase"],
@@ -5193,7 +5035,7 @@ export const Constants = {
         "on_hold",
       ],
       quantity_type: ["nos", "length", "area", "weight"],
-      req_status: ["open", "partially_issued", "issued", "closed"],
+      req_status: ["open", "partially_ordered", "ordered", "closed"],
       role: ["admin", "founder", "team_lead", "team_member"],
       tracking_mode: ["item", "box", "bulk"],
     },

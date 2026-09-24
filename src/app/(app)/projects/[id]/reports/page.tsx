@@ -431,7 +431,7 @@ export default async function ProjectReportsPage({ params }: { params: Promise<{
               label="Download BOM"
               filename={`${project.project_no}-BOM.xlsx`}
               sheetName="BOM"
-              headers={["Sr. No.", "Component No.", "Material Description", "UOM", "Required Qty", "Source", "Note"]}
+              headers={["Sr. No.", "WPC", "Material Description", "UOM", "Required Qty", "Source", "Note"]}
               rows={bomRows}
               disabled={!bomApproved}
               colWidths={[8, 18, 36, 10, 14, 12, 30]}
@@ -468,7 +468,7 @@ export default async function ProjectReportsPage({ params }: { params: Promise<{
                 label="Download Material Status"
                 filename={`${project.project_no}-Material-Status.xlsx`}
                 sheetName="Material Status"
-                headers={["Sr. No.", "Component No.", "Material Description", "UOM", "Required Qty", "Status", "Ordered Qty", "Received Qty", "Blocked Qty", "Available Qty", "WIP Qty", "Receipts (PO → GRN)"]}
+                headers={["Sr. No.", "WPC", "Material Description", "UOM", "Required Qty", "Status", "Ordered Qty", "Received Qty", "Blocked Qty", "Available Qty", "WIP Qty", "Receipts (PO → GRN)"]}
                 rows={materialStatusExcelRows}
                 colWidths={[8, 18, 36, 10, 12, 14, 12, 12, 12, 12, 12, 40]}
               />
