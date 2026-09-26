@@ -578,6 +578,66 @@ export type Database = {
           },
         ]
       }
+      component_mpns: {
+        Row: {
+          component_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          mpn: string
+        }
+        Insert: {
+          component_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mpn: string
+        }
+        Update: {
+          component_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mpn?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "component_mpns_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "component_mpns_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "v_component_on_hand"
+            referencedColumns: ["component_id"]
+          },
+          {
+            foreignKeyName: "component_mpns_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "v_component_on_hand_safe"
+            referencedColumns: ["component_id"]
+          },
+          {
+            foreignKeyName: "component_mpns_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "v_components_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "component_mpns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       components: {
         Row: {
           by_weight: boolean
@@ -596,7 +656,6 @@ export type Database = {
           jw_rate: number | null
           jw_vendor_id: string | null
           length_mm: number | null
-          mpn: string | null
           name: string
           nominal_size: string | null
           od_mm: number | null
@@ -632,7 +691,6 @@ export type Database = {
           jw_rate?: number | null
           jw_vendor_id?: string | null
           length_mm?: number | null
-          mpn?: string | null
           name: string
           nominal_size?: string | null
           od_mm?: number | null
@@ -668,7 +726,6 @@ export type Database = {
           jw_rate?: number | null
           jw_vendor_id?: string | null
           length_mm?: number | null
-          mpn?: string | null
           name?: string
           nominal_size?: string | null
           od_mm?: number | null
@@ -3535,7 +3592,6 @@ export type Database = {
           is_serialized: boolean | null
           jw_vendor_id: string | null
           length_mm: number | null
-          mpn: string | null
           name: string | null
           nominal_size: string | null
           od_mm: number | null
@@ -3569,7 +3625,6 @@ export type Database = {
           is_serialized?: boolean | null
           jw_vendor_id?: string | null
           length_mm?: number | null
-          mpn?: string | null
           name?: string | null
           nominal_size?: string | null
           od_mm?: number | null
@@ -3603,7 +3658,6 @@ export type Database = {
           is_serialized?: boolean | null
           jw_vendor_id?: string | null
           length_mm?: number | null
-          mpn?: string | null
           name?: string | null
           nominal_size?: string | null
           od_mm?: number | null

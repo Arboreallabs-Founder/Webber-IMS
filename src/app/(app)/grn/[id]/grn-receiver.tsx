@@ -733,10 +733,6 @@ export function GrnReceiver({
                 <Input name="component_no" required placeholder="e.g. NZ-3600-02" autoFocus />
               </div>
               <div className="space-y-1.5">
-                <Label>MPN (Manufacturer Part No.)</Label>
-                <Input name="mpn" placeholder="e.g. 1N4148" />
-              </div>
-              <div className="space-y-1.5">
                 <Label>Name *</Label>
                 <Input name="name" required placeholder="Nozzle 2 inch" />
               </div>
@@ -771,6 +767,16 @@ export function GrnReceiver({
                 </Select>
                 <span className="text-xs text-muted-foreground">Requires an IRN (inspection) before goods received at GRN become stock.</span>
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>MPN(s) (Manufacturer Part No.)</Label>
+              <textarea
+                name="mpns"
+                rows={2}
+                placeholder="One per line — e.g.&#10;1N4148&#10;SMBJ4148"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <span className="text-xs text-muted-foreground">The same WPC can be sourced from more than one manufacturer — list each one's MPN on its own line.</span>
             </div>
             <div className="space-y-1.5">
               <Label>Description</Label>

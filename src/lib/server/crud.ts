@@ -137,8 +137,6 @@ export async function deleteRecord(table: string, fd: FormData): Promise<ActionR
 }
 
 function friendlyError(msg: string, code?: string) {
-  if (msg.includes("components_mpn_key"))
-    return "This MPN is already used by another component. Each MPN must be unique — if it's the same manufacturer part, use that existing component instead of creating a new one.";
   if (code === "23505" || msg.includes("duplicate key")) return "A record with that unique value already exists.";
   if (code === "23503" || (msg.includes("foreign key") && msg.includes("still referenced")))
     return "Can't delete — this record is referenced by other data.";

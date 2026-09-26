@@ -11,10 +11,13 @@ export default async function ComponentsPage() {
   const supabase = await createClient();
 
   // team_member reads the column-masked safe view (no standard_cost)
-  const [data, vendors, { data: templates }] = await Promise.all([
+  const [data, vendors, { data: templates }, { data: mpnRows }] = await Promise.all([
     getComponents(finance),
     getVendors(),
     supabase.from("inspection_templates").select("id, name").eq("is_active", true).order("name"),
+    // One component can carry several MPNs (one per manufacturer it's sourced
+    // from) — fetched separately since it's a child list, not a column.
+    supabase.from("component_mpns").select("component_id, mpn").order("created_at"),
   ]);
   const assemblies = data.filter((c) => c.is_assembly);
   const vendorOptions = (vendors ?? []).map((v) => ({ value: v.id, label: v.name }));
@@ -23,16 +26,27 @@ export default async function ComponentsPage() {
 
   const templateLabel = new Map((templates ?? []).map((t) => [t.id, t.name]));
 
+  const mpnsByComponent = new Map<string, string[]>();
+  for (const m of mpnRows ?? []) {
+    (mpnsByComponent.get(m.component_id) ?? mpnsByComponent.set(m.component_id, []).get(m.component_id)!).push(m.mpn);
+  }
+
   // enrich rows with a readable sub-assembly label for the list column
-  const rows = (data ?? []).map((r) => ({
-    ...r,
-    parent_assembly_label: r.parent_assembly_id ? assemblyLabel.get(r.parent_assembly_id) ?? "—" : "—",
-    inspection_template_label: r.inspection_template_id ? templateLabel.get(r.inspection_template_id) ?? "—" : "—",
-  }));
+  const rows = (data ?? []).map((r) => {
+    const mpns = mpnsByComponent.get(r.id) ?? [];
+    return {
+      ...r,
+      parent_assembly_label: r.parent_assembly_id ? assemblyLabel.get(r.parent_assembly_id) ?? "—" : "—",
+      inspection_template_label: r.inspection_template_id ? templateLabel.get(r.inspection_template_id) ?? "—" : "—",
+      mpn_display: mpns.join(", "),
+      // Textarea default value — one per line, so editing shows the same shape it's typed in.
+      mpns: mpns.join("\n"),
+    };
+  });
 
   const columns: Column[] = [
     { key: "component_no", label: "WPC" },
-    { key: "mpn", label: "MPN" },
+    { key: "mpn_display", label: "MPN(s)" },
     { key: "name", label: "Name" },
     { key: "type", label: "Type" },
     { key: "grade", label: "Grade" },
@@ -44,7 +58,6 @@ export default async function ComponentsPage() {
 
   const fields: Field[] = [
     { name: "component_no", label: "WPC (Webber Part Code)", type: "text", required: true },
-    { name: "mpn", label: "MPN (Manufacturer Part No.)", type: "text", placeholder: "e.g. 1N4148" },
     { name: "name", label: "Name", type: "text", required: true },
     { name: "type", label: "Category", type: "text", placeholder: "Nozzle, Fastener, Media…" },
     { name: "grade", label: "Grade", type: "text", placeholder: "MS, SS316, Brass…" },
@@ -57,6 +70,13 @@ export default async function ComponentsPage() {
       type: "select",
       options: templateOptions,
       help: "Requires an IRN (inspection) before goods received at GRN become stock.",
+    },
+    {
+      name: "mpns",
+      label: "MPN(s) (Manufacturer Part No.)",
+      type: "textarea",
+      placeholder: "One per line — e.g.\n1N4148\nSMBJ4148",
+      help: "The same WPC can be sourced from more than one manufacturer — list each one's MPN on its own line.",
     },
     { name: "description", label: "Description", type: "textarea" },
   ];
@@ -77,7 +97,7 @@ export default async function ComponentsPage() {
         deleteAction={remove}
         canWrite={canWriteMasters(profile?.role)}
         canSeeFinancials={finance}
-        searchKeys={["component_no", "mpn", "name", "type", "grade"]}
+        searchKeys={["component_no", "mpn_display", "name", "type", "grade"]}
         dialogClassName="max-w-2xl"
         hiddenValues={{ tracking_mode: "box", quantity_type: "nos", uom: "Nos" }}
       />

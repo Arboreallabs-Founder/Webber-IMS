@@ -2,10 +2,10 @@
 
 import { upsertRecord, deleteRecord, type ActionResult } from "@/lib/server/crud";
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
 
 const FIELDS = {
   component_no: "string",
-  mpn: "string",
   name: "string",
   description: "string",
   type: "string",
@@ -30,12 +30,45 @@ export async function upsert(fd: FormData): Promise<ActionResult> {
   // supplier and changing the "primary" supplier doesn't invalidate that.
   const rawSupplierId = String(fd.get("raw_supplier_id") ?? "").trim();
   const componentId = res.id ?? String(fd.get("id") ?? "");
+  const supabase = await createClient();
   if (rawSupplierId && componentId) {
-    const supabase = await createClient();
     await supabase
       .from("vendor_components")
       .upsert({ vendor_id: rawSupplierId, component_id: componentId }, { onConflict: "vendor_id,component_id" });
   }
+
+  // MPNs: the same WPC can be sourced from more than one manufacturer, so a
+  // component carries a list, submitted one per line. Replace the full set on
+  // every save — simplest correct approach for a short, order-independent list.
+  if (componentId) {
+    const mpns = String(fd.get("mpns") ?? "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (mpns.length > 0) {
+      const { data: conflicts } = await supabase
+        .from("component_mpns")
+        .select("mpn, components(component_no)")
+        .in("mpn", mpns)
+        .neq("component_id", componentId);
+      if (conflicts && conflicts.length > 0) {
+        const c = conflicts[0] as unknown as { mpn: string; components: { component_no: string } | { component_no: string }[] | null };
+        const other = Array.isArray(c.components) ? c.components[0] : c.components;
+        return { error: `MPN "${c.mpn}" is already used by another component (${other?.component_no ?? "—"}).` };
+      }
+    }
+
+    await supabase.from("component_mpns").delete().eq("component_id", componentId);
+    if (mpns.length > 0) {
+      const profile = await getProfile();
+      const { error } = await supabase
+        .from("component_mpns")
+        .insert(mpns.map((mpn) => ({ component_id: componentId, mpn, created_by: profile?.id })));
+      if (error) return { error: error.message.includes("component_mpns_mpn_key") ? "One of these MPNs is already used by another component." : error.message };
+    }
+  }
+
   return res;
 }
 export async function remove(fd: FormData): Promise<ActionResult> {

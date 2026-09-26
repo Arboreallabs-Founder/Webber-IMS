@@ -46,18 +46,30 @@ async function main() {
   const componentIdByCno = new Map<string, string>();
   for (const r of rows) {
     const { data: existing } = await supa.from("components").select("id").eq("component_no", r.component_no).maybeSingle();
+    let componentId: string;
     if (existing) {
       const { error } = await supa.from("components")
-        .update({ name: r.name, mpn: r.mpn, tracking_mode: "box", quantity_type: "nos", uom: "Nos" })
+        .update({ name: r.name, tracking_mode: "box", quantity_type: "nos", uom: "Nos" })
         .eq("id", existing.id);
       if (error) throw new Error(`update ${r.component_no}: ${error.message}`);
-      componentIdByCno.set(r.component_no, existing.id);
+      componentId = existing.id;
     } else {
       const { data, error } = await supa.from("components")
-        .insert({ component_no: r.component_no, name: r.name, mpn: r.mpn, tracking_mode: "box", quantity_type: "nos", uom: "Nos" })
+        .insert({ component_no: r.component_no, name: r.name, tracking_mode: "box", quantity_type: "nos", uom: "Nos" })
         .select("id").single();
       if (error) throw new Error(`insert ${r.component_no}: ${error.message}`);
-      componentIdByCno.set(r.component_no, data.id);
+      componentId = data.id;
+    }
+    componentIdByCno.set(r.component_no, componentId);
+
+    // MPN moved off components onto its own child table — a component can carry
+    // several, one per manufacturer. Upsert this row's MPN if it doesn't exist yet.
+    if (r.mpn) {
+      const { data: existingMpn } = await supa.from("component_mpns").select("id").eq("mpn", r.mpn).maybeSingle();
+      if (!existingMpn) {
+        const { error } = await supa.from("component_mpns").insert({ component_id: componentId, mpn: r.mpn });
+        if (error) throw new Error(`insert mpn ${r.mpn} for ${r.component_no}: ${error.message}`);
+      }
     }
   }
   console.log(`Components upserted: ${componentIdByCno.size}`);
