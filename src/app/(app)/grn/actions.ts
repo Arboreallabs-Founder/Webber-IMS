@@ -115,6 +115,7 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
   const pieceWeight = Number(fd.get("piece_weight") ?? "") || null;
 
   const target_lot_id = String(fd.get("target_lot_id") ?? "") || null;
+  const mpn_id = String(fd.get("mpn_id") ?? "") || null;
 
   const supabase = await createClient();
 
@@ -154,6 +155,7 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
     project_id: String(fd.get("project_id") ?? "") || null,
     unit_cost: unitCostRaw === "" ? null : Number(unitCostRaw),
     target_lot_id,
+    mpn_id,
     created_by: p.id,
   }).select("id").single();
   if (error) return { error: error.message };

@@ -63,6 +63,7 @@ export async function submitIrn(fd: FormData): Promise<ActionResult> {
     p_target_lot_id: String(fd.get("target_lot_id") ?? "") || null,
     p_piece_weight: num(fd, "piece_weight"),
     p_signature_id: mySig?.id ?? null,
+    p_mpn_id: String(fd.get("mpn_id") ?? "") || null,
   });
   if (error) return { error: error.message };
   const res = result as { error?: string; id?: string; irn_no?: string; status?: string };

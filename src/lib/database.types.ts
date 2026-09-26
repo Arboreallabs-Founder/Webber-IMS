@@ -978,6 +978,7 @@ export type Database = {
           id: string
           is_untagged: boolean
           jw_line_id: string | null
+          mpn_id: string | null
           po_line_id: string | null
           project_id: string | null
           qty_received: number
@@ -993,6 +994,7 @@ export type Database = {
           id?: string
           is_untagged?: boolean
           jw_line_id?: string | null
+          mpn_id?: string | null
           po_line_id?: string | null
           project_id?: string | null
           qty_received?: number
@@ -1008,6 +1010,7 @@ export type Database = {
           id?: string
           is_untagged?: boolean
           jw_line_id?: string | null
+          mpn_id?: string | null
           po_line_id?: string | null
           project_id?: string | null
           qty_received?: number
@@ -1063,6 +1066,13 @@ export type Database = {
             columns: ["jw_line_id"]
             isOneToOne: false
             referencedRelation: "job_work_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grn_lines_mpn_id_fkey"
+            columns: ["mpn_id"]
+            isOneToOne: false
+            referencedRelation: "component_mpns"
             referencedColumns: ["id"]
           },
           {
@@ -1328,6 +1338,7 @@ export type Database = {
           jw_stage: Database["public"]["Enums"]["jw_stage"] | null
           location: string | null
           lot_code: string
+          mpn_id: string | null
           parent_lot_id: string | null
           piece_weight: number | null
           project_id: string | null
@@ -1349,6 +1360,7 @@ export type Database = {
           jw_stage?: Database["public"]["Enums"]["jw_stage"] | null
           location?: string | null
           lot_code: string
+          mpn_id?: string | null
           parent_lot_id?: string | null
           piece_weight?: number | null
           project_id?: string | null
@@ -1370,6 +1382,7 @@ export type Database = {
           jw_stage?: Database["public"]["Enums"]["jw_stage"] | null
           location?: string | null
           lot_code?: string
+          mpn_id?: string | null
           parent_lot_id?: string | null
           piece_weight?: number | null
           project_id?: string | null
@@ -1436,6 +1449,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_untagged_receipts"
             referencedColumns: ["grn_line_id"]
+          },
+          {
+            foreignKeyName: "inventory_lots_mpn_id_fkey"
+            columns: ["mpn_id"]
+            isOneToOne: false
+            referencedRelation: "component_mpns"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "inventory_lots_parent_lot_id_fkey"
@@ -1568,6 +1588,7 @@ export type Database = {
           id: string
           irn_no: string
           jw_line_id: string | null
+          mpn_id: string | null
           piece_count: number | null
           piece_length: number | null
           piece_weight: number | null
@@ -1597,6 +1618,7 @@ export type Database = {
           id?: string
           irn_no: string
           jw_line_id?: string | null
+          mpn_id?: string | null
           piece_count?: number | null
           piece_length?: number | null
           piece_weight?: number | null
@@ -1626,6 +1648,7 @@ export type Database = {
           id?: string
           irn_no?: string
           jw_line_id?: string | null
+          mpn_id?: string | null
           piece_count?: number | null
           piece_length?: number | null
           piece_weight?: number | null
@@ -1724,6 +1747,13 @@ export type Database = {
             columns: ["jw_line_id"]
             isOneToOne: false
             referencedRelation: "job_work_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "irns_mpn_id_fkey"
+            columns: ["mpn_id"]
+            isOneToOne: false
+            referencedRelation: "component_mpns"
             referencedColumns: ["id"]
           },
           {
@@ -4870,26 +4900,48 @@ export type Database = {
         Args: { p_actor: string; p_po_id: string; p_signature_id: string }
         Returns: Json
       }
-      submit_irn: {
-        Args: {
-          p_answers: Json
-          p_component_id: string
-          p_grn_id: string
-          p_jw_line_id?: string
-          p_piece_count: number
-          p_piece_length: number
-          p_piece_weight?: number
-          p_piece_width: number
-          p_po_line_id: string
-          p_project_id: string
-          p_qty: number
-          p_signature_id?: string
-          p_submitter_id: string
-          p_target_lot_id?: string
-          p_unit_cost: number
-        }
-        Returns: Json
-      }
+      submit_irn:
+        | {
+            Args: {
+              p_answers: Json
+              p_component_id: string
+              p_grn_id: string
+              p_jw_line_id?: string
+              p_piece_count: number
+              p_piece_length: number
+              p_piece_weight?: number
+              p_piece_width: number
+              p_po_line_id: string
+              p_project_id: string
+              p_qty: number
+              p_signature_id?: string
+              p_submitter_id: string
+              p_target_lot_id?: string
+              p_unit_cost: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_answers: Json
+              p_component_id: string
+              p_grn_id: string
+              p_jw_line_id?: string
+              p_mpn_id?: string
+              p_piece_count: number
+              p_piece_length: number
+              p_piece_weight?: number
+              p_piece_width: number
+              p_po_line_id: string
+              p_project_id: string
+              p_qty: number
+              p_signature_id?: string
+              p_submitter_id: string
+              p_target_lot_id?: string
+              p_unit_cost: number
+            }
+            Returns: Json
+          }
     }
     Enums: {
       bom_line_source: "template" | "manual" | "site_purchase"
