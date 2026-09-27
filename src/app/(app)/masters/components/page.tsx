@@ -11,13 +11,16 @@ export default async function ComponentsPage() {
   const supabase = await createClient();
 
   // team_member reads the column-masked safe view (no standard_cost)
-  const [data, vendors, { data: templates }, { data: mpnRows }] = await Promise.all([
+  const [data, vendors, { data: templates }, { data: mpnRows }, { data: altRows }] = await Promise.all([
     getComponents(finance),
     getVendors(),
     supabase.from("inspection_templates").select("id, name").eq("is_active", true).order("name"),
     // One component can carry several MPNs (one per manufacturer it's sourced
     // from) — fetched separately since it's a child list, not a column.
     supabase.from("component_mpns").select("component_id, mpn").order("created_at"),
+    // Approved alternatives — symmetric, so a plain filter on component_id
+    // already returns the full set regardless of which side it was added from.
+    supabase.from("component_alternatives").select("component_id, alternative_id"),
   ]);
   const assemblies = data.filter((c) => c.is_assembly);
   const vendorOptions = (vendors ?? []).map((v) => ({ value: v.id, label: v.name }));
@@ -31,9 +34,17 @@ export default async function ComponentsPage() {
     (mpnsByComponent.get(m.component_id) ?? mpnsByComponent.set(m.component_id, []).get(m.component_id)!).push(m.mpn);
   }
 
+  const alternativesByComponent = new Map<string, string[]>();
+  for (const a of altRows ?? []) {
+    (alternativesByComponent.get(a.component_id) ?? alternativesByComponent.set(a.component_id, []).get(a.component_id)!).push(a.alternative_id);
+  }
+  const componentLabel = new Map((data ?? []).map((c) => [c.id, `${c.component_no} — ${c.name}`]));
+  const alternativeOptions = (data ?? []).map((c) => ({ value: c.id, label: `${c.component_no} — ${c.name}` }));
+
   // enrich rows with a readable sub-assembly label for the list column
   const rows = (data ?? []).map((r) => {
     const mpns = mpnsByComponent.get(r.id) ?? [];
+    const altIds = alternativesByComponent.get(r.id) ?? [];
     return {
       ...r,
       parent_assembly_label: r.parent_assembly_id ? assemblyLabel.get(r.parent_assembly_id) ?? "—" : "—",
@@ -41,6 +52,8 @@ export default async function ComponentsPage() {
       mpn_display: mpns.join(", "),
       // Textarea default value — one per line, so editing shows the same shape it's typed in.
       mpns: mpns.join("\n"),
+      alternatives_display: altIds.map((id) => componentLabel.get(id) ?? "—").join(", "),
+      alternative_ids: altIds.join(","),
     };
   });
 
@@ -53,6 +66,7 @@ export default async function ComponentsPage() {
     { key: "parent_assembly_label", label: "Sub-assembly" },
     { key: "is_assembly", label: "Assembly", format: "bool" },
     { key: "inspection_template_label", label: "Inspection" },
+    { key: "alternatives_display", label: "Alternatives" },
     { key: "standard_cost", label: "Std Cost", format: "inr", financial: true },
   ];
 
@@ -77,6 +91,13 @@ export default async function ComponentsPage() {
       type: "textarea",
       placeholder: "One per line — e.g.\n1N4148\nSMBJ4148",
       help: "The same WPC can be sourced from more than one manufacturer — list each one's MPN on its own line.",
+    },
+    {
+      name: "alternative_ids",
+      label: "Approved alternatives",
+      type: "tags",
+      options: alternativeOptions,
+      help: "Components that can substitute for this one — marking one here also marks this one as an alternative for it.",
     },
     { name: "description", label: "Description", type: "textarea" },
   ];

@@ -28,7 +28,7 @@ export type { ActionResult };
 export type ColumnFormat = "text" | "number" | "inr" | "bool" | "date" | "badge";
 export type Column = { key: string; label: string; format?: ColumnFormat; financial?: boolean };
 
-export type FieldType = "text" | "number" | "checkbox" | "select" | "combobox" | "textarea" | "date";
+export type FieldType = "text" | "number" | "checkbox" | "select" | "combobox" | "textarea" | "date" | "tags";
 export type Field = {
   name: string;
   label: string;
@@ -239,7 +239,7 @@ export function CrudManager({
             ))}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {visibleFields.map((f) => (
-              <FieldInput key={f.name} field={f} defaultValue={formRow?.[f.name]} />
+              <FieldInput key={f.name} field={f} defaultValue={formRow?.[f.name]} excludeId={formRow?.id} />
             ))}
           </div>
           {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -257,8 +257,8 @@ export function CrudManager({
   );
 }
 
-function FieldInput({ field, defaultValue }: { field: Field; defaultValue: unknown }) {
-  const full = field.type === "textarea";
+function FieldInput({ field, defaultValue, excludeId }: { field: Field; defaultValue: unknown; excludeId?: string }) {
+  const full = field.type === "textarea" || field.type === "tags";
   if (field.type === "checkbox") {
     return (
       <label className="flex items-center gap-2 self-end pb-2">
@@ -309,6 +309,8 @@ function FieldInput({ field, defaultValue }: { field: Field; defaultValue: unkno
           placeholder={field.placeholder}
           defaultValue={defaultValue != null ? String(defaultValue) : ""}
         />
+      ) : field.type === "tags" ? (
+        <TagsPicker name={field.name} options={field.options ?? []} defaultValue={defaultValue} excludeId={excludeId} />
       ) : (
         <Input
           id={field.name}
@@ -321,6 +323,67 @@ function FieldInput({ field, defaultValue }: { field: Field; defaultValue: unkno
         />
       )}
       {field.help && <p className="text-xs text-muted-foreground">{field.help}</p>}
+    </div>
+  );
+}
+
+/** Multi-select "chips" picker — used for self-referencing lists like a component's approved alternatives. */
+function TagsPicker({
+  name,
+  options,
+  defaultValue,
+  excludeId,
+}: {
+  name: string;
+  options: { value: string; label: string }[];
+  defaultValue: unknown;
+  excludeId?: string;
+}) {
+  const initial = React.useMemo(() => {
+    if (Array.isArray(defaultValue)) return defaultValue as string[];
+    if (typeof defaultValue === "string" && defaultValue.trim()) {
+      return defaultValue.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    return [];
+  }, [defaultValue]);
+  const [selected, setSelected] = React.useState<string[]>(initial);
+  const [picker, setPicker] = React.useState("");
+  const labelById = React.useMemo(() => new Map(options.map((o) => [o.value, o.label])), [options]);
+  const available = React.useMemo(
+    () => options.filter((o) => o.value !== excludeId && !selected.includes(o.value)),
+    [options, excludeId, selected],
+  );
+
+  return (
+    <div className="space-y-1.5">
+      <input type="hidden" name={name} value={selected.join(",")} />
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map((id) => (
+            <Badge key={id} variant="secondary" className="gap-1 pr-1.5">
+              {labelById.get(id) ?? id}
+              <button
+                type="button"
+                onClick={() => setSelected((prev) => prev.filter((x) => x !== id))}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Remove"
+              >
+                ×
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+      <Combobox
+        items={available}
+        value={picker}
+        onChange={(v) => {
+          if (!v) return;
+          setSelected((prev) => (prev.includes(v) ? prev : [...prev, v]));
+          setPicker("");
+        }}
+        placeholder="Search to add…"
+      />
     </div>
   );
 }

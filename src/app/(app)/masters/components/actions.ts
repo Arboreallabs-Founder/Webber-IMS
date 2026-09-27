@@ -69,6 +69,42 @@ export async function upsert(fd: FormData): Promise<ActionResult> {
     }
   }
 
+  // Approved alternatives: symmetric — both (this, alt) and (alt, this) are
+  // stored, so any lookup on either component returns the full set with a
+  // plain filter. Replace the full set on every save, same as MPNs above.
+  if (componentId) {
+    const altIds = String(fd.get("alternative_ids") ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s && s !== componentId);
+
+    const { data: existing } = await supabase
+      .from("component_alternatives")
+      .select("alternative_id")
+      .eq("component_id", componentId);
+    const existingIds = new Set((existing ?? []).map((r) => r.alternative_id));
+    const nextIds = new Set(altIds);
+
+    const toAdd = altIds.filter((id) => !existingIds.has(id));
+    const toRemove = [...existingIds].filter((id) => !nextIds.has(id));
+
+    if (toAdd.length > 0) {
+      const profile = await getProfile();
+      const rows = toAdd.flatMap((altId) => [
+        { component_id: componentId, alternative_id: altId, created_by: profile?.id },
+        { component_id: altId, alternative_id: componentId, created_by: profile?.id },
+      ]);
+      const { error } = await supabase
+        .from("component_alternatives")
+        .upsert(rows, { onConflict: "component_id,alternative_id" });
+      if (error) return { error: error.message };
+    }
+    for (const altId of toRemove) {
+      await supabase.from("component_alternatives").delete().eq("component_id", componentId).eq("alternative_id", altId);
+      await supabase.from("component_alternatives").delete().eq("component_id", altId).eq("alternative_id", componentId);
+    }
+  }
+
   return res;
 }
 export async function remove(fd: FormData): Promise<ActionResult> {

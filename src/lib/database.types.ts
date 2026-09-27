@@ -514,6 +514,94 @@ export type Database = {
           },
         ]
       }
+      component_alternatives: {
+        Row: {
+          alternative_id: string
+          component_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+        }
+        Insert: {
+          alternative_id: string
+          component_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+        }
+        Update: {
+          alternative_id?: string
+          component_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "component_alternatives_alternative_id_fkey"
+            columns: ["alternative_id"]
+            isOneToOne: false
+            referencedRelation: "components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "component_alternatives_alternative_id_fkey"
+            columns: ["alternative_id"]
+            isOneToOne: false
+            referencedRelation: "v_component_on_hand"
+            referencedColumns: ["component_id"]
+          },
+          {
+            foreignKeyName: "component_alternatives_alternative_id_fkey"
+            columns: ["alternative_id"]
+            isOneToOne: false
+            referencedRelation: "v_component_on_hand_safe"
+            referencedColumns: ["component_id"]
+          },
+          {
+            foreignKeyName: "component_alternatives_alternative_id_fkey"
+            columns: ["alternative_id"]
+            isOneToOne: false
+            referencedRelation: "v_components_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "component_alternatives_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "component_alternatives_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "v_component_on_hand"
+            referencedColumns: ["component_id"]
+          },
+          {
+            foreignKeyName: "component_alternatives_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "v_component_on_hand_safe"
+            referencedColumns: ["component_id"]
+          },
+          {
+            foreignKeyName: "component_alternatives_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "v_components_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "component_alternatives_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       component_inspection_field_exclusions: {
         Row: {
           component_id: string
