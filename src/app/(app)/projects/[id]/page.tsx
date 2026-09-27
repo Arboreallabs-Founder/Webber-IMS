@@ -99,6 +99,41 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     }))
     .sort((a, b) => b.shortfall - a.shortfall);
 
+  // "Available as alternative" — for each short component, check whether any
+  // of its approved alternatives currently has free stock. "Free" mirrors
+  // project_shortfall()'s own on-hand definition: general/untagged lots plus
+  // this project's own, excluding stock already reserved to a different one.
+  const shortComponentIds = shortfallRows.filter((r) => r.shortfall > 0).map((r) => r.component_id).filter(Boolean);
+  const { data: altLinks } = shortComponentIds.length
+    ? await supabase.from("component_alternatives").select("component_id, alternative_id").in("component_id", shortComponentIds)
+    : { data: [] };
+  const altIdsByComponent = new Map<string, string[]>();
+  for (const a of altLinks ?? []) {
+    (altIdsByComponent.get(a.component_id) ?? altIdsByComponent.set(a.component_id, []).get(a.component_id)!).push(a.alternative_id);
+  }
+  const allAltIds = [...new Set((altLinks ?? []).map((a) => a.alternative_id))];
+  const { data: altLots } = allAltIds.length
+    ? await supabase
+        .from("inventory_lots")
+        .select("component_id, qty_on_hand, project_id")
+        .in("component_id", allAltIds)
+        .neq("status", "consumed")
+        .gt("qty_on_hand", 0)
+    : { data: [] };
+  const onHandByAlt = new Map<string, number>();
+  for (const l of altLots ?? []) {
+    if (l.project_id && l.project_id !== id) continue; // reserved to a different project — not free
+    onHandByAlt.set(l.component_id, (onHandByAlt.get(l.component_id) ?? 0) + Number(l.qty_on_hand ?? 0));
+  }
+  shortfallRows = shortfallRows.map((r) => {
+    if (r.shortfall <= 0) return r;
+    const alternatives = (altIdsByComponent.get(r.component_id) ?? [])
+      .map((altId) => ({ component_id: altId, label: componentLabel.get(altId) ?? "—", on_hand: onHandByAlt.get(altId) ?? 0 }))
+      .filter((a) => a.on_hand > 0)
+      .sort((a, b) => b.on_hand - a.on_hand);
+    return alternatives.length > 0 ? { ...r, alternatives } : r;
+  });
+
   const paramsByProduct: Record<string, VariantParam[]> = {};
   for (const p of vparams ?? []) {
     (paramsByProduct[p.product_id] ??= []).push({

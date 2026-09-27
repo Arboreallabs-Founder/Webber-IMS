@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startNavProgress } from "@/components/navigation-progress";
-import { ShoppingCart, CheckCircle2, AlertTriangle, MinusCircle, ArrowRight } from "lucide-react";
+import { ShoppingCart, CheckCircle2, AlertTriangle, MinusCircle, ArrowRight, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -12,6 +12,7 @@ import { formatNumber } from "@/lib/utils";
 import { raisePoFromShortfall } from "../../purchase-orders/actions";
 import type { ActionResult } from "../../purchase-orders/actions";
 
+type Alternative = { component_id: string; label: string; on_hand: number };
 type Row = {
   component_id: string;
   component_label: string;
@@ -20,6 +21,7 @@ type Row = {
   on_hand: number;
   consumed: number;
   shortfall: number;
+  alternatives?: Alternative[];
 };
 
 export function ShortfallPanel({ projectId, rows, canProcure }: { projectId: string; rows: Row[]; canProcure: boolean }) {
@@ -121,6 +123,20 @@ export function ShortfallPanel({ projectId, rows, canProcure }: { projectId: str
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <MinusCircle className="size-3.5" /> No stock
                   </span>
+                )}
+                {r.shortfall > 0 && r.alternatives && r.alternatives.length > 0 && (
+                  <p className="mt-1 flex items-start gap-1 text-xs text-blue-700">
+                    <Shuffle className="mt-0.5 size-3 shrink-0" />
+                    <span>
+                      Available as alternative:{" "}
+                      {r.alternatives.map((a, i) => (
+                        <React.Fragment key={a.component_id}>
+                          {i > 0 && ", "}
+                          {a.label} — {formatNumber(a.on_hand)}
+                        </React.Fragment>
+                      ))}
+                    </span>
+                  </p>
                 )}
               </TableCell>
             </TableRow>
