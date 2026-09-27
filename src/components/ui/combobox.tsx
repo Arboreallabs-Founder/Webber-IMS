@@ -26,6 +26,9 @@ export function Combobox({
   disabled,
   id,
   className,
+  onCreate,
+  creating,
+  createLabel,
 }: {
   items: ComboboxItem[];
   value?: string;
@@ -38,6 +41,11 @@ export function Combobox({
   disabled?: boolean;
   id?: string;
   className?: string;
+  /** When set, a "no matches" state offers to create a new item from the typed text instead of just saying so. */
+  onCreate?: (query: string) => void;
+  /** Shows a pending state on the create option while the caller's onCreate is in flight. */
+  creating?: boolean;
+  createLabel?: (query: string) => string;
 }) {
   const isControlled = value !== undefined;
   const [internalValue, setInternalValue] = React.useState(defaultValue ?? "");
@@ -179,9 +187,20 @@ export function Combobox({
       {open && rect && query && results.length === 0 && createPortal(
         <div
           style={{ position: "fixed", top: rect.top + 4, left: rect.left, width: rect.width }}
-          className="z-[60] rounded-md border border-border bg-card p-3 text-sm text-muted-foreground shadow-lg"
+          className="z-[60] rounded-md border border-border bg-card shadow-lg"
         >
-          {emptyText}
+          {onCreate ? (
+            <button
+              type="button"
+              disabled={creating}
+              onClick={() => onCreate(query.trim())}
+              className="block w-full px-3 py-2 text-left text-sm text-primary hover:bg-accent disabled:opacity-50"
+            >
+              {creating ? "Adding…" : createLabel ? createLabel(query.trim()) : `+ Add "${query.trim()}"`}
+            </button>
+          ) : (
+            <p className="p-3 text-sm text-muted-foreground">{emptyText}</p>
+          )}
         </div>,
         document.body,
       )}

@@ -104,9 +104,7 @@ export function GrnReceiver({
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
   const [mpnId, setMpnId] = React.useState("");
   const [extraMpns, setExtraMpns] = React.useState<Record<string, { id: string; mpn: string }[]>>({});
-  const [mpnDialogOpen, setMpnDialogOpen] = React.useState(false);
-  const [mpnDialogError, setMpnDialogError] = React.useState<string | null>(null);
-  const [mpnDialogPending, setMpnDialogPending] = React.useState(false);
+  const [mpnCreating, setMpnCreating] = React.useState(false);
 
   // Components created inline this session, merged on top of the server list.
   const [extraComponents, setExtraComponents] = React.useState<Component[]>([]);
@@ -189,7 +187,10 @@ export function GrnReceiver({
     setPieceCount("");
     setTotalLength("");
     setTotalWeight("");
-    setTargetLotId("");
+    // Default to an existing open box when this component already has one —
+    // "new box" is the exception, not the default.
+    const boxes = manualComp ? (openBoxesByComponent[manualComp] ?? []) : [];
+    setTargetLotId(boxes.length > 0 ? boxes[0].id : "");
     setUnitCost("");
     setAnswers({});
     setMpnId("");
@@ -240,27 +241,20 @@ export function GrnReceiver({
     router.refresh();
   }
 
-  async function onAddMpn(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!addMpnAction || !manualComp) return;
-    setMpnDialogError(null);
-    const form = e.currentTarget;
-    const fd = new FormData(form);
-    setMpnDialogPending(true);
+  async function handleCreateMpn(query: string) {
+    if (!addMpnAction || !manualComp || !query) return;
+    setError(null);
+    setMpnCreating(true);
+    const fd = new FormData();
+    fd.set("component_id", manualComp);
+    fd.set("mpn", query);
     const res = await addMpnAction(fd);
-    setMpnDialogPending(false);
-    if (res?.error) {
-      setMpnDialogError(res.error);
-      return;
+    setMpnCreating(false);
+    if (res?.error) { setError(res.error); return; }
+    if (res.id) {
+      setExtraMpns((prev) => ({ ...prev, [manualComp]: [...(prev[manualComp] ?? []), { id: res.id!, mpn: query }] }));
+      setMpnId(res.id);
     }
-    const newId = res.id;
-    const mpn = String(fd.get("mpn") ?? "").trim();
-    if (newId) {
-      setExtraMpns((prev) => ({ ...prev, [manualComp]: [...(prev[manualComp] ?? []), { id: newId, mpn }] }));
-      setMpnId(newId);
-    }
-    setMpnDialogOpen(false);
-    form.reset();
   }
 
   async function runIrn(fd: FormData, onOk?: () => void) {
@@ -383,26 +377,19 @@ export function GrnReceiver({
             {manualComp && (
               mpnRelevant ? (
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label>MPN (Manufacturer Part No.)</Label>
-                    {addMpnAction && (
-                      <button
-                        type="button"
-                        onClick={() => { setMpnDialogError(null); setMpnDialogOpen(true); }}
-                        className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline"
-                      >
-                        <Plus className="size-3" /> Add new MPN
-                      </button>
-                    )}
-                  </div>
-                  <Select name="mpn_id" value={mpnId} onChange={(e) => setMpnId(e.target.value)}>
-                    <option value="">— none / not specified —</option>
-                    {mpnOptions.map((m) => (
-                      <option key={m.id} value={m.id}>{m.mpn}</option>
-                    ))}
-                  </Select>
+                  <Label>MPN (Manufacturer Part No.)</Label>
+                  <Combobox
+                    items={mpnOptions.map((m) => ({ value: m.id, label: m.mpn }))}
+                    name="mpn_id"
+                    value={mpnId}
+                    onChange={setMpnId}
+                    placeholder="Type to search, or type a new one to add it…"
+                    onCreate={addMpnAction ? handleCreateMpn : undefined}
+                    creating={mpnCreating}
+                    createLabel={(q) => `+ Add "${q}" as new MPN`}
+                  />
                   {mpnOptions.length === 0 && (
-                    <span className="text-xs text-muted-foreground">No MPNs recorded for this component yet.</span>
+                    <span className="text-xs text-muted-foreground">No MPNs recorded for this component yet — type one above to add it.</span>
                   )}
                 </div>
               ) : (
@@ -464,12 +451,12 @@ export function GrnReceiver({
                       <div className="space-y-1.5">
                         <Label>Box (QR is on the box)</Label>
                         <Select value={targetLotId} onChange={(e) => setTargetLotId(e.target.value)}>
-                          <option value="">— New box (new QR) —</option>
                           {boxesForComp.map((b) => (
                             <option key={b.id} value={b.id}>
                               {b.container_no ?? b.lot_code} · {formatNumber(b.qty_on_hand)} in box
                             </option>
                           ))}
+                          <option value="">— New box (new QR) —</option>
                         </Select>
                         <span className="text-xs text-muted-foreground">
                           {targetLotId ? "Adds these pieces into the existing box (no new QR)." : "Creates a new box with its own QR."}
@@ -871,23 +858,6 @@ export function GrnReceiver({
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setCompDialogOpen(false)}>Cancel</Button>
               <Button type="submit" loading={compDialogPending}>Create &amp; select</Button>
-            </div>
-          </form>
-        </Dialog>
-      )}
-
-      {addMpnAction && (
-        <Dialog open={mpnDialogOpen} onClose={() => setMpnDialogOpen(false)} title="Add new MPN" className="max-w-sm">
-          <form onSubmit={onAddMpn} className="space-y-4">
-            <input type="hidden" name="component_id" value={manualComp} />
-            <div className="space-y-1.5">
-              <Label>MPN (Manufacturer Part No.) *</Label>
-              <Input name="mpn" required placeholder="e.g. 1N4148" autoFocus />
-            </div>
-            {mpnDialogError && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{mpnDialogError}</p>}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setMpnDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" loading={mpnDialogPending}>Add &amp; select</Button>
             </div>
           </form>
         </Dialog>
