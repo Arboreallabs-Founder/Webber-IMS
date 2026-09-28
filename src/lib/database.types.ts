@@ -1524,7 +1524,10 @@ export type Database = {
           location: string | null
           lot_code: string
           parent_lot_id: string | null
+          piece_count: number | null
+          piece_length: number | null
           piece_weight: number | null
+          piece_width: number | null
           project_id: string | null
           qty_initial: number
           qty_on_hand: number
@@ -1545,7 +1548,10 @@ export type Database = {
           location?: string | null
           lot_code: string
           parent_lot_id?: string | null
+          piece_count?: number | null
+          piece_length?: number | null
           piece_weight?: number | null
+          piece_width?: number | null
           project_id?: string | null
           qty_initial?: number
           qty_on_hand?: number
@@ -1566,7 +1572,10 @@ export type Database = {
           location?: string | null
           lot_code?: string
           parent_lot_id?: string | null
+          piece_count?: number | null
+          piece_length?: number | null
           piece_weight?: number | null
+          piece_width?: number | null
           project_id?: string | null
           qty_initial?: number
           qty_on_hand?: number

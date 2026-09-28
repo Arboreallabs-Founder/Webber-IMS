@@ -131,11 +131,21 @@ export function Combobox({
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
-    if (!open || results.length === 0) return;
+    if (!open) return;
+    if (e.key === "Escape") { setOpen(false); return; }
+    // No matches but a creatable value typed — Enter creates it, same as
+    // clicking the "+ Add ..." row, so typing-then-Enter doesn't silently
+    // leave the value unselected and unsaved.
+    if (results.length === 0) {
+      if (e.key === "Enter" && onCreate && !creating && query.trim()) {
+        e.preventDefault();
+        onCreate(query.trim());
+      }
+      return;
+    }
     if (e.key === "ArrowDown") { e.preventDefault(); setHighlighted((h) => Math.min(h + 1, results.length - 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setHighlighted((h) => Math.max(h - 1, 0)); }
     else if (e.key === "Enter") { e.preventDefault(); if (results[highlighted]) select(results[highlighted]); }
-    else if (e.key === "Escape") setOpen(false);
   }
 
   return (
