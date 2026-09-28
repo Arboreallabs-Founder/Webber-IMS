@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startNavProgress } from "@/components/navigation-progress";
-import { ShoppingCart, CheckCircle2, AlertTriangle, MinusCircle, ArrowRight, Shuffle } from "lucide-react";
+import { ShoppingCart, CheckCircle2, AlertTriangle, MinusCircle, ArrowRight, Shuffle, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -24,13 +24,44 @@ type Row = {
   alternatives?: Alternative[];
 };
 
-export function ShortfallPanel({ projectId, rows, canProcure }: { projectId: string; rows: Row[]; canProcure: boolean }) {
+type ReplaceResult = { ok?: true; error?: string; message?: string };
+
+export function ShortfallPanel({
+  projectId,
+  bomId,
+  rows,
+  canProcure,
+  replaceAction,
+}: {
+  projectId: string;
+  bomId?: string | null;
+  rows: Row[];
+  canProcure: boolean;
+  replaceAction?: (fd: FormData) => Promise<ReplaceResult>;
+}) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [raised, setRaised] = React.useState<{ message?: string; created: NonNullable<ActionResult["created"]> } | null>(null);
+  const [subMessage, setSubMessage] = React.useState<string | null>(null);
 
   const hasShortfall = rows.some((r) => r.shortfall > 0);
+
+  async function replaceWithAlternative(componentId: string, alternativeId: string) {
+    if (!replaceAction || !bomId) return;
+    const key = `sub-${componentId}-${alternativeId}`;
+    setBusy(key); setError(null); setSubMessage(null); setRaised(null);
+    const fd = new FormData();
+    fd.set("project_id", projectId);
+    fd.set("bom_id", bomId);
+    fd.set("component_id", componentId);
+    fd.set("alternative_id", alternativeId);
+    const res = await replaceAction(fd);
+    setBusy(null);
+    if (res?.error) { setError(res.error); return; }
+    setSubMessage(res.message ?? "Replaced.");
+    router.refresh();
+  }
 
   async function raisePo() {
     setBusy("po"); setError(null); setRaised(null);
@@ -70,6 +101,7 @@ export function ShortfallPanel({ projectId, rows, canProcure }: { projectId: str
         </div>
       )}
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {subMessage && <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{subMessage}</p>}
 
       {raised && (
         <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
@@ -98,9 +130,9 @@ export function ShortfallPanel({ projectId, rows, canProcure }: { projectId: str
         </TableHeader>
         <TableBody>
           {rows.map((r) => (
-            <TableRow key={r.component_id}>
+            <TableRow key={r.component_id} className="group">
               <TableCell className="font-medium">{r.component_label}</TableCell>
-              <TableCell>{formatNumber(r.required)}</TableCell>
+              <TableCell>{formatNumber(Math.max(0, r.required))}</TableCell>
               <TableCell>{formatNumber(r.on_hand)}</TableCell>
               <TableCell className="text-muted-foreground">{formatNumber(r.ordered)}</TableCell>
               <TableCell className="text-muted-foreground">{formatNumber(r.consumed)}</TableCell>
@@ -125,18 +157,31 @@ export function ShortfallPanel({ projectId, rows, canProcure }: { projectId: str
                   </span>
                 )}
                 {r.shortfall > 0 && r.alternatives && r.alternatives.length > 0 && (
-                  <p className="mt-1 flex items-start gap-1 text-xs text-blue-700">
-                    <Shuffle className="mt-0.5 size-3 shrink-0" />
-                    <span>
-                      Available as alternative:{" "}
-                      {r.alternatives.map((a, i) => (
-                        <React.Fragment key={a.component_id}>
-                          {i > 0 && ", "}
-                          {a.label} — {formatNumber(a.on_hand)}
-                        </React.Fragment>
-                      ))}
-                    </span>
-                  </p>
+                  <div className="mt-1 space-y-1">
+                    {r.alternatives.map((a) => {
+                      const key = `sub-${r.component_id}-${a.component_id}`;
+                      return (
+                        <div key={a.component_id} className="flex flex-wrap items-center gap-2 text-xs text-blue-700">
+                          <span className="inline-flex items-center gap-1">
+                            <Shuffle className="size-3 shrink-0" />
+                            Available as alternative: {a.label} — {formatNumber(a.on_hand)}
+                          </span>
+                          {replaceAction && bomId && canProcure && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              loading={busy === key}
+                              onClick={() => replaceWithAlternative(r.component_id, a.component_id)}
+                              className="h-6 px-2 text-[11px] opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+                            >
+                              <Repeat className="size-3" /> Replace with in-stock alternative
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </TableCell>
             </TableRow>

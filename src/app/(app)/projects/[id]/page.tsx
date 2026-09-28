@@ -29,6 +29,7 @@ import {
   removeBomLine,
   updateProjectStatus,
   blockStockForBom,
+  replaceShortfallWithAlternative,
 } from "./actions";
 import { logSitePurchase } from "../../site-purchases/actions";
 
@@ -349,7 +350,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       </CollapsibleSection>
 
       <CollapsibleSection id="shortfall" title="Stock check & shortfall" defaultOpen={shortfallRows.some((r) => r.shortfall > 0)}>
-        <ShortfallPanel projectId={id} rows={shortfallRows} canProcure={canWrite} />
+        <ShortfallPanel
+          projectId={id}
+          bomId={bom?.id ?? null}
+          rows={shortfallRows}
+          canProcure={canWrite}
+          replaceAction={replaceShortfallWithAlternative}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection id="site-purchase" title="Site purchase">

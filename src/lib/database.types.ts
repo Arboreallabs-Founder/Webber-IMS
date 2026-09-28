@@ -133,6 +133,7 @@ export type Database = {
           project_line_item_id: string | null
           required_qty: number
           source: Database["public"]["Enums"]["bom_line_source"]
+          substitution_alt_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -145,6 +146,7 @@ export type Database = {
           project_line_item_id?: string | null
           required_qty?: number
           source?: Database["public"]["Enums"]["bom_line_source"]
+          substitution_alt_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -157,6 +159,7 @@ export type Database = {
           project_line_item_id?: string | null
           required_qty?: number
           source?: Database["public"]["Enums"]["bom_line_source"]
+          substitution_alt_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -207,6 +210,34 @@ export type Database = {
             columns: ["project_line_item_id"]
             isOneToOne: false
             referencedRelation: "project_line_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bom_lines_substitution_alt_id_fkey"
+            columns: ["substitution_alt_id"]
+            isOneToOne: false
+            referencedRelation: "components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bom_lines_substitution_alt_id_fkey"
+            columns: ["substitution_alt_id"]
+            isOneToOne: false
+            referencedRelation: "v_component_on_hand"
+            referencedColumns: ["component_id"]
+          },
+          {
+            foreignKeyName: "bom_lines_substitution_alt_id_fkey"
+            columns: ["substitution_alt_id"]
+            isOneToOne: false
+            referencedRelation: "v_component_on_hand_safe"
+            referencedColumns: ["component_id"]
+          },
+          {
+            foreignKeyName: "bom_lines_substitution_alt_id_fkey"
+            columns: ["substitution_alt_id"]
+            isOneToOne: false
+            referencedRelation: "v_components_safe"
             referencedColumns: ["id"]
           },
         ]

@@ -294,3 +294,93 @@ export async function removeBomLine(fd: FormData): Promise<ActionResult> {
   revalidate(project_id);
   return { ok: true };
 }
+
+// ---------- shortfall panel: "Replace with in-stock alternative" ----------
+// Shifts demand from a short component onto an approved alternative that
+// currently has free stock: a negative adjustment against the original (only
+// as much as the alternative can actually cover) and a matching positive one
+// against the alternative. Both numbers are re-derived here from the live
+// shortfall/on-hand figures — never trust whatever the client last rendered,
+// since stock can move between page load and click.
+//
+// The pair is found by substitution_alt_id (each row points at the other
+// component in the swap) and updated in place rather than re-inserted, so
+// clicking again — after stock shifts, or just a duplicate click — recomputes
+// the same pair instead of stacking up duplicate lines.
+export async function replaceShortfallWithAlternative(fd: FormData): Promise<ActionResult> {
+  const p = await planner();
+  if (!p) return { error: "Not authorized." };
+  const project_id = String(fd.get("project_id") ?? "");
+  const bom_id = String(fd.get("bom_id") ?? "");
+  const component_id = String(fd.get("component_id") ?? "");
+  const alternative_id = String(fd.get("alternative_id") ?? "");
+  if (!project_id || !bom_id || !component_id || !alternative_id) return { error: "Missing fields." };
+
+  const supabase = await createClient();
+
+  const { data: shortfallRow } = await supabase
+    .from("v_project_shortfall")
+    .select("shortfall_qty")
+    .eq("project_id", project_id)
+    .eq("component_id", component_id)
+    .maybeSingle();
+  const shortfallQty = Number(shortfallRow?.shortfall_qty ?? 0);
+  if (shortfallQty <= 0) return { error: "This component is no longer short — nothing to replace." };
+
+  // Free stock for the alternative: general/untagged lots, plus this
+  // project's own — same definition the shortfall panel's own figures use.
+  const { data: altLots } = await supabase
+    .from("inventory_lots")
+    .select("qty_on_hand, project_id")
+    .eq("component_id", alternative_id)
+    .neq("status", "consumed")
+    .gt("qty_on_hand", 0);
+  const altOnHand = (altLots ?? [])
+    .filter((l) => l.project_id === null || l.project_id === project_id)
+    .reduce((s, l) => s + Number(l.qty_on_hand ?? 0), 0);
+
+  const swapQty = Math.min(shortfallQty, altOnHand);
+  if (swapQty <= 0) return { error: "The alternative has no free stock to substitute." };
+
+  const { data: comps } = await supabase.from("components").select("id, component_no").in("id", [component_id, alternative_id]);
+  const compNo = new Map((comps ?? []).map((c) => [c.id, c.component_no]));
+
+  const { data: existingCredit } = await supabase
+    .from("bom_lines")
+    .select("id")
+    .eq("bom_id", bom_id).eq("component_id", component_id).eq("substitution_alt_id", alternative_id)
+    .maybeSingle();
+  const { data: existingDemand } = await supabase
+    .from("bom_lines")
+    .select("id")
+    .eq("bom_id", bom_id).eq("component_id", alternative_id).eq("substitution_alt_id", component_id)
+    .maybeSingle();
+
+  const creditNote = `Replaced by ${compNo.get(alternative_id) ?? "alternative"} (in-stock alternative)`;
+  const demandNote = `Substitute for ${compNo.get(component_id) ?? "original"} (in-stock alternative)`;
+
+  if (existingCredit) {
+    const { error } = await supabase.from("bom_lines").update({ required_qty: -swapQty, note: creditNote }).eq("id", existingCredit.id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await supabase.from("bom_lines").insert({
+      bom_id, component_id, required_qty: -swapQty, source: "manual",
+      substitution_alt_id: alternative_id, note: creditNote, created_by: p.id,
+    });
+    if (error) return { error: error.message };
+  }
+
+  if (existingDemand) {
+    const { error } = await supabase.from("bom_lines").update({ required_qty: swapQty, note: demandNote }).eq("id", existingDemand.id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await supabase.from("bom_lines").insert({
+      bom_id, component_id: alternative_id, required_qty: swapQty, source: "manual",
+      substitution_alt_id: component_id, note: demandNote, created_by: p.id,
+    });
+    if (error) return { error: error.message };
+  }
+
+  revalidate(project_id);
+  return { ok: true, message: `Replaced ${swapQty} unit(s) with ${compNo.get(alternative_id) ?? "the alternative"}.` };
+}
