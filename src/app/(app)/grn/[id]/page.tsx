@@ -112,14 +112,14 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
   // existing open box lots (container_no set) — receivers can add pieces to a box
   const { data: openBoxes } = await supabase
     .from("inventory_lots")
-    .select("id, component_id, lot_code, qty_on_hand, container_no")
+    .select("id, component_id, lot_code, qty_on_hand, container_no, location")
     .eq("status", "open")
     .not("container_no", "is", null)
     .gt("qty_on_hand", 0);
-  const openBoxesByComponent: Record<string, { id: string; lot_code: string; qty_on_hand: number; container_no: string | null }[]> = {};
+  const openBoxesByComponent: Record<string, { id: string; lot_code: string; qty_on_hand: number; container_no: string | null; location: string | null }[]> = {};
   for (const b of openBoxes ?? []) {
     (openBoxesByComponent[b.component_id] ??= []).push({
-      id: b.id, lot_code: b.lot_code, qty_on_hand: Number(b.qty_on_hand ?? 0), container_no: b.container_no,
+      id: b.id, lot_code: b.lot_code, qty_on_hand: Number(b.qty_on_hand ?? 0), container_no: b.container_no, location: b.location,
     });
   }
 

@@ -19,7 +19,7 @@ import { addGrnLine, type ActionResult } from "../actions";
 type Posted = { id: string; component_label: string; qty: number; is_untagged: boolean; lot_code: string | null; lot_id: string | null; blocked_project: string | null };
 type OpenPoEntry = { po_line_id: string; po_no: string; tag: string; project_id: string | null; remaining: number };
 type Component = { id: string; component_no: string; name: string; quantity_type: string; tracking_mode: string; inspection_template_id?: string | null };
-type OpenBox = { id: string; lot_code: string; qty_on_hand: number; container_no: string | null };
+type OpenBox = { id: string; lot_code: string; qty_on_hand: number; container_no: string | null; location: string | null };
 type TemplateField = { id: string; label: string; field_type: string; options: string[] | null; is_required: boolean };
 type IrnRow = { id: string; irn_no: string; component_label: string; qty: number; status: string; generated_by: string; rejection_reason: string | null };
 type IrnActionResult = { ok?: true; error?: string; id?: string; irn_no?: string; status?: string };
@@ -105,6 +105,7 @@ export function GrnReceiver({
   const [mpnId, setMpnId] = React.useState("");
   const [extraMpns, setExtraMpns] = React.useState<Record<string, { id: string; mpn: string }[]>>({});
   const [mpnCreating, setMpnCreating] = React.useState(false);
+  const [location, setLocation] = React.useState("");
 
   // Components created inline this session, merged on top of the server list.
   const [extraComponents, setExtraComponents] = React.useState<Component[]>([]);
@@ -136,9 +137,11 @@ export function GrnReceiver({
     () => (manualComp ? [...(mpnsByComponent?.[manualComp] ?? []), ...(extraMpns[manualComp] ?? [])] : []),
     [manualComp, mpnsByComponent, extraMpns],
   );
-  // Adding to an existing box keeps whatever MPN that box already has — MPN
-  // selection only matters when this receipt creates a new lot.
+  // Adding to an existing box keeps whatever MPN/location that box already
+  // has — both only matter when this receipt creates a new lot.
   const mpnRelevant = manualComp && !(trackingMode === "box" && !!targetLotId);
+  const locationRelevant = mpnRelevant;
+  const existingBox = trackingMode === "box" && targetLotId ? boxesForComp.find((b) => b.id === targetLotId) : undefined;
   const allTemplateFields = selectedComp?.inspection_template_id ? (templateFieldsByTemplate[selectedComp.inspection_template_id] ?? []) : [];
   const excludedIds = React.useMemo(() => new Set(manualComp ? (excludedFieldIdsByComponent[manualComp] ?? []) : []), [manualComp, excludedFieldIdsByComponent]);
   const templateFields = allTemplateFields.filter((f) => !excludedIds.has(f.id));
@@ -194,12 +197,13 @@ export function GrnReceiver({
     setUnitCost("");
     setAnswers({});
     setMpnId("");
+    setLocation("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualComp]);
 
-  // Picking an existing box supersedes MPN choice — that box already has one.
+  // Picking an existing box supersedes MPN/location choice — that box already has both.
   React.useEffect(() => {
-    if (targetLotId) setMpnId("");
+    if (targetLotId) { setMpnId(""); setLocation(""); }
   }, [targetLotId]);
 
   async function run(fd: FormData, key: string, onOk?: () => void) {
@@ -283,6 +287,7 @@ export function GrnReceiver({
     // For length/weight, override qty_received with the computed total
     if (derivedQty !== null) fd.set("qty_received", String(derivedQty));
     if (mpnRelevant && mpnId) fd.set("mpn_id", mpnId);
+    if (locationRelevant && location.trim()) fd.set("location", location.trim());
 
     if (poPriceConflict) {
       setError("A Purchase Order is attached to this line — clear the Unit cost field so the PO's price is the one registered.");
@@ -312,6 +317,7 @@ export function GrnReceiver({
         setUnitCost("");
         setAnswers({});
         setMpnId("");
+        setLocation("");
       });
       return;
     }
@@ -327,6 +333,7 @@ export function GrnReceiver({
       setTargetLotId("");
       setUnitCost("");
       setMpnId("");
+      setLocation("");
     });
   }
 
@@ -394,6 +401,25 @@ export function GrnReceiver({
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">MPN not needed — adding into an existing box, which already has one.</p>
+              )
+            )}
+
+            {/* Location — where this box/lot is physically stored */}
+            {manualComp && (
+              locationRelevant ? (
+                <div className="space-y-1.5">
+                  <Label>Location</Label>
+                  <Input
+                    name="location"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="e.g. Store-A / Rack-3"
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Location not needed — adding into an existing box{existingBox?.location ? `, already stored at ${existingBox.location}` : ""}.
+                </p>
               )
             )}
 

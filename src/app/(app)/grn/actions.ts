@@ -116,6 +116,8 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
 
   const target_lot_id = String(fd.get("target_lot_id") ?? "") || null;
   const mpn_id = String(fd.get("mpn_id") ?? "") || null;
+  // An existing box already has a location — never let a top-up change it.
+  const location = target_lot_id ? null : String(fd.get("location") ?? "").trim() || null;
 
   const supabase = await createClient();
 
@@ -156,6 +158,7 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
     unit_cost: unitCostRaw === "" ? null : Number(unitCostRaw),
     target_lot_id,
     mpn_id,
+    location,
     created_by: p.id,
   }).select("id").single();
   if (error) return { error: error.message };

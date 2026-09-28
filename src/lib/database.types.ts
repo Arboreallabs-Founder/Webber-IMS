@@ -1097,6 +1097,7 @@ export type Database = {
           id: string
           is_untagged: boolean
           jw_line_id: string | null
+          location: string | null
           mpn_id: string | null
           po_line_id: string | null
           project_id: string | null
@@ -1113,6 +1114,7 @@ export type Database = {
           id?: string
           is_untagged?: boolean
           jw_line_id?: string | null
+          location?: string | null
           mpn_id?: string | null
           po_line_id?: string | null
           project_id?: string | null
@@ -1129,6 +1131,7 @@ export type Database = {
           id?: string
           is_untagged?: boolean
           jw_line_id?: string | null
+          location?: string | null
           mpn_id?: string | null
           po_line_id?: string | null
           project_id?: string | null
@@ -1707,6 +1710,7 @@ export type Database = {
           id: string
           irn_no: string
           jw_line_id: string | null
+          location: string | null
           mpn_id: string | null
           piece_count: number | null
           piece_length: number | null
@@ -1737,6 +1741,7 @@ export type Database = {
           id?: string
           irn_no: string
           jw_line_id?: string | null
+          location?: string | null
           mpn_id?: string | null
           piece_count?: number | null
           piece_length?: number | null
@@ -1767,6 +1772,7 @@ export type Database = {
           id?: string
           irn_no?: string
           jw_line_id?: string | null
+          location?: string | null
           mpn_id?: string | null
           piece_count?: number | null
           piece_length?: number | null
@@ -5055,6 +5061,28 @@ export type Database = {
               p_component_id: string
               p_grn_id: string
               p_jw_line_id?: string
+              p_mpn_id?: string
+              p_piece_count: number
+              p_piece_length: number
+              p_piece_weight?: number
+              p_piece_width: number
+              p_po_line_id: string
+              p_project_id: string
+              p_qty: number
+              p_signature_id?: string
+              p_submitter_id: string
+              p_target_lot_id?: string
+              p_unit_cost: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_answers: Json
+              p_component_id: string
+              p_grn_id: string
+              p_jw_line_id?: string
+              p_location?: string
               p_mpn_id?: string
               p_piece_count: number
               p_piece_length: number
