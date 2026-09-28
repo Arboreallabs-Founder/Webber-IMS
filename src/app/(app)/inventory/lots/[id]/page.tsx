@@ -48,6 +48,28 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
     return { label: (Array.isArray(mpnRow) ? mpnRow[0]?.mpn : mpnRow?.mpn) ?? "—", qty: Number(r.qty ?? 0) };
   });
 
+  // Every MPN this component has ever been registered under, plus how much of
+  // each has been received across ALL of its lots (not just this one) — so
+  // opening any single lot shows the full picture for its WPC. This is a
+  // received-quantity tally, not live remaining stock: consumption is tracked
+  // per lot, not broken down by MPN within a lot.
+  const [{ data: allMpnsForComponent }, { data: allMpnQtyRows }] = lot.component_id
+    ? await Promise.all([
+        supabase.from("component_mpns").select("id, mpn").eq("component_id", lot.component_id).order("mpn"),
+        supabase
+          .from("inventory_lot_mpns")
+          .select("mpn_id, qty, inventory_lots!inner(component_id)")
+          .eq("inventory_lots.component_id", lot.component_id),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const receivedByMpn = new Map<string, number>();
+  for (const r of allMpnQtyRows ?? []) {
+    receivedByMpn.set(r.mpn_id, (receivedByMpn.get(r.mpn_id) ?? 0) + Number(r.qty ?? 0));
+  }
+  const allMpnsBreakdown = (allMpnsForComponent ?? [])
+    .map((m) => ({ id: m.id, label: m.mpn, qty: receivedByMpn.get(m.id) ?? 0 }))
+    .sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label));
+
   const issueMoveIds = (moves ?? []).filter((m) => m.movement_type === "issue").map((m) => m.id);
   const { data: reversals } = isAdmin && issueMoveIds.length
     ? await supabase.from("stock_movements").select("reference_id").eq("reference_type", "consumption_reversal").in("reference_id", issueMoveIds)
@@ -110,15 +132,32 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
         </Card>
       </div>
 
-      {mpnBreakdown.length > 0 && (
+      {(mpnBreakdown.length > 0 || allMpnsBreakdown.length > 0) && (
         <Card className="mb-6">
-          <CardContent className="p-5">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">MPN breakdown</p>
-            <div className="flex flex-wrap gap-2">
-              {mpnBreakdown.map((m) => (
-                <Badge key={m.label} variant="secondary">{m.label} × {formatNumber(m.qty)}</Badge>
-              ))}
-            </div>
+          <CardContent className="space-y-4 p-5">
+            {mpnBreakdown.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">In this box</p>
+                <div className="flex flex-wrap gap-2">
+                  {mpnBreakdown.map((m) => (
+                    <Badge key={m.label} variant="secondary">{m.label} × {formatNumber(m.qty)}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {allMpnsBreakdown.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">All MPNs for this component</p>
+                <div className="flex flex-wrap gap-2">
+                  {allMpnsBreakdown.map((m) => (
+                    <Badge key={m.id} variant={m.qty > 0 ? "secondary" : "outline"}>
+                      {m.label}{m.qty > 0 ? ` × ${formatNumber(m.qty)}` : " — none received"}
+                    </Badge>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">Total received across every lot of this component, not just this one — and not adjusted for what's since been consumed.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
