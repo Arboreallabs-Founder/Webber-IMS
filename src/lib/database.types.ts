@@ -2823,42 +2823,51 @@ export type Database = {
       }
       projects: {
         Row: {
+          consumption_reason: string | null
           created_at: string
           created_by: string | null
           customer_id: string | null
           customer_po_number: string | null
           customer_po_value: number | null
           delivery_date: string | null
+          department: string | null
           dispatch_date: string | null
           id: string
+          is_internal: boolean
           order_date: string | null
           project_no: string
           status: Database["public"]["Enums"]["project_status"]
           updated_at: string | null
         }
         Insert: {
+          consumption_reason?: string | null
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
           customer_po_number?: string | null
           customer_po_value?: number | null
           delivery_date?: string | null
+          department?: string | null
           dispatch_date?: string | null
           id?: string
+          is_internal?: boolean
           order_date?: string | null
           project_no: string
           status?: Database["public"]["Enums"]["project_status"]
           updated_at?: string | null
         }
         Update: {
+          consumption_reason?: string | null
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
           customer_po_number?: string | null
           customer_po_value?: number | null
           delivery_date?: string | null
+          department?: string | null
           dispatch_date?: string | null
           id?: string
+          is_internal?: boolean
           order_date?: string | null
           project_no?: string
           status?: Database["public"]["Enums"]["project_status"]

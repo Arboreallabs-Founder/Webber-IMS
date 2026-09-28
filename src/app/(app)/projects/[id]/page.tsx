@@ -32,6 +32,7 @@ import {
   replaceShortfallWithAlternative,
 } from "./actions";
 import { logSitePurchase } from "../../site-purchases/actions";
+import { raiseRequisitionFromShortfall } from "../../requisitions/actions";
 
 function variantText(sel: unknown): string {
   if (!sel || typeof sel !== "object") return "";
@@ -263,12 +264,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       </Link>
       <PageHeader
         title={project.project_no}
-        description={customer?.name ?? undefined}
+        description={
+          project.is_internal
+            ? [project.department, project.consumption_reason].filter(Boolean).join(" — ") || "Internal consumption"
+            : customer?.name ?? undefined
+        }
         action={
           <div className="flex items-center gap-3">
             <Link href={`/projects/${id}/reports`} className={buttonVariants({ variant: "outline", size: "sm" })}>
               <FileSpreadsheet className="size-4" /> Reports
             </Link>
+            {project.is_internal && <Badge variant="secondary">Internal</Badge>}
             <Badge variant="secondary">{project.status}</Badge>
           </div>
         }
@@ -334,16 +340,18 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         />
       </CollapsibleSection>
 
-      <CollapsibleSection id="stock-status" title="Stock status & blocking" defaultOpen>
-        <StockStatusPanel
-          projectId={id}
-          bomId={bom?.id ?? null}
-          bomApproved={bom?.status === "approved"}
-          rows={stockStatusRows}
-          canWrite={canWrite}
-          blockAction={blockStockForBom}
-        />
-      </CollapsibleSection>
+      {!project.is_internal && (
+        <CollapsibleSection id="stock-status" title="Stock status & blocking" defaultOpen>
+          <StockStatusPanel
+            projectId={id}
+            bomId={bom?.id ?? null}
+            bomApproved={bom?.status === "approved"}
+            rows={stockStatusRows}
+            canWrite={canWrite}
+            blockAction={blockStockForBom}
+          />
+        </CollapsibleSection>
+      )}
 
       <CollapsibleSection id="issued" title="Materials issued">
         <IssuedPanel rows={issuedRows} />
@@ -356,19 +364,22 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           rows={shortfallRows}
           canProcure={canWrite}
           replaceAction={replaceShortfallWithAlternative}
+          raiseRequisitionAction={raiseRequisitionFromShortfall}
         />
       </CollapsibleSection>
 
-      <CollapsibleSection id="site-purchase" title="Site purchase">
-        <SitePurchaseForm
-          projectId={id}
-          bomApproved={bom?.status === "approved"}
-          components={components ?? []}
-          vendors={vendors ?? []}
-          showUnitCost={canSeeFinancials(profile?.role)}
-          action={logSitePurchase}
-        />
-      </CollapsibleSection>
+      {!project.is_internal && (
+        <CollapsibleSection id="site-purchase" title="Site purchase">
+          <SitePurchaseForm
+            projectId={id}
+            bomApproved={bom?.status === "approved"}
+            components={components ?? []}
+            vendors={vendors ?? []}
+            showUnitCost={canSeeFinancials(profile?.role)}
+            action={logSitePurchase}
+          />
+        </CollapsibleSection>
+      )}
     </div>
   );
 }

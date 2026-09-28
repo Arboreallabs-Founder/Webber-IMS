@@ -67,6 +67,9 @@ type Project = {
   delivery_date: string | null;
   customer_po_number: string | null;
   customer_po_value: number | null;
+  is_internal: boolean;
+  department: string | null;
+  consumption_reason: string | null;
 };
 
 type Customer = { id: string; name: string };
@@ -102,7 +105,8 @@ export function ProjectsList({
     const q = query.toLowerCase();
     return (
       p.project_no.toLowerCase().includes(q) ||
-      (p.customer_name ?? "").toLowerCase().includes(q)
+      (p.customer_name ?? "").toLowerCase().includes(q) ||
+      (p.department ?? "").toLowerCase().includes(q)
     );
   });
 
@@ -154,7 +158,7 @@ export function ProjectsList({
         <TableHeader>
           <TableRow>
             <TableHead>Project</TableHead>
-            <TableHead>Customer</TableHead>
+            <TableHead>Customer / Dept</TableHead>
             <TableHead>Phase</TableHead>
             <TableHead>Delivery</TableHead>
             {canSeeFinancials && <TableHead>Budgeted Cost</TableHead>}
@@ -174,7 +178,16 @@ export function ProjectsList({
               return (
                 <TableRow key={p.id}>
                   <TableCell className="font-semibold">{p.project_no}</TableCell>
-                  <TableCell className="text-muted-foreground">{p.customer_name ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {p.is_internal ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Badge variant="secondary">Internal</Badge>
+                        {p.department ?? "—"}
+                      </span>
+                    ) : (
+                      p.customer_name ?? "—"
+                    )}
+                  </TableCell>
                   <TableCell>
                     <PhaseCell status={p.status} />
                   </TableCell>
@@ -314,18 +327,61 @@ function ProjectForm({
   onCancel: () => void;
 }) {
   const customerItems = React.useMemo(() => customers.map((c) => ({ value: c.id, label: c.name })), [customers]);
+  const [isInternal, setIsInternal] = React.useState(initial?.is_internal ?? false);
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       {initial && <input type="hidden" name="id" value={initial.id} />}
+
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          name="is_internal"
+          checked={isInternal}
+          onChange={(e) => setIsInternal(e.target.checked)}
+          className="size-4 rounded border-input"
+        />
+        <span className="text-sm font-medium">Internal consumption (no customer)</span>
+      </label>
 
       <div className="grid grid-cols-2 gap-4">
         <Field label="Project / Order No." required className="col-span-2">
           <Input name="project_no" required defaultValue={initial?.project_no ?? ""} placeholder="YWS-001" />
         </Field>
 
-        <Field label="Customer" className="col-span-2">
-          <Combobox items={customerItems} defaultValue={initial?.customer_id ?? ""} name="customer_id" placeholder="— none —" />
-        </Field>
+        {isInternal ? (
+          <>
+            <Field label="Department" required className="col-span-2">
+              <Input name="department" required={isInternal} defaultValue={initial?.department ?? ""} placeholder="Production, QA, R&D…" />
+            </Field>
+            <Field label="Reason for consumption" required className="col-span-2">
+              <Input name="consumption_reason" required={isInternal} defaultValue={initial?.consumption_reason ?? ""} placeholder="e.g. Testing, rework, internal build" />
+            </Field>
+          </>
+        ) : (
+          <>
+            <Field label="Customer" className="col-span-2">
+              <Combobox items={customerItems} defaultValue={initial?.customer_id ?? ""} name="customer_id" placeholder="— none —" />
+            </Field>
+
+            <Field label="Customer PO No.">
+              <Input name="customer_po_number" defaultValue={initial?.customer_po_number ?? ""} />
+            </Field>
+
+            {canSeeFinancials && (
+              <Field label="Budgeted Company Cost (₹)">
+                <Input name="customer_po_value" type="number" step="any" defaultValue={initial?.customer_po_value ?? ""} />
+              </Field>
+            )}
+
+            <Field label="Order date">
+              <Input name="order_date" type="date" defaultValue={initial?.order_date ?? ""} />
+            </Field>
+
+            <Field label="Delivery date">
+              <Input name="delivery_date" type="date" defaultValue={initial?.delivery_date ?? ""} />
+            </Field>
+          </>
+        )}
 
         {initial && (
           <Field label="Status">
@@ -334,24 +390,6 @@ function ProjectForm({
             </Select>
           </Field>
         )}
-
-        <Field label="Customer PO No.">
-          <Input name="customer_po_number" defaultValue={initial?.customer_po_number ?? ""} />
-        </Field>
-
-        {canSeeFinancials && (
-          <Field label="Budgeted Company Cost (₹)">
-            <Input name="customer_po_value" type="number" step="any" defaultValue={initial?.customer_po_value ?? ""} />
-          </Field>
-        )}
-
-        <Field label="Order date">
-          <Input name="order_date" type="date" defaultValue={initial?.order_date ?? ""} />
-        </Field>
-
-        <Field label="Delivery date">
-          <Input name="delivery_date" type="date" defaultValue={initial?.delivery_date ?? ""} />
-        </Field>
       </div>
 
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

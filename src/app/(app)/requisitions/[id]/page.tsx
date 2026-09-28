@@ -26,7 +26,7 @@ export default async function RequisitionDetailPage({ params }: { params: Promis
     supabase.from("requisition_lines").select("*").eq("requisition_id", id).order("created_at"),
     supabase.from("components").select("id, component_no, name").order("component_no"),
     req.project_id
-      ? supabase.from("projects").select("project_no").eq("id", req.project_id).maybeSingle()
+      ? supabase.from("projects").select("project_no, is_internal, department, consumption_reason").eq("id", req.project_id).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase
       .from("stock_movements")
@@ -37,10 +37,21 @@ export default async function RequisitionDetailPage({ params }: { params: Promis
   ]);
 
   const compLabel = new Map((components ?? []).map((c) => [c.id, `${c.component_no} — ${c.name}`]));
+
+  // How much of each component has actually been scanned & consumed so far —
+  // powers the tick mark on each requested line as it gets fulfilled.
+  const consumedQtyByComponent = new Map<string, number>();
+  for (const m of movements ?? []) {
+    if (!m.component_id) continue;
+    const qty = Math.abs(Number(m.qty ?? 0));
+    consumedQtyByComponent.set(m.component_id, (consumedQtyByComponent.get(m.component_id) ?? 0) + qty);
+  }
+
   const lineRows = (lines ?? []).map((l) => ({
     id: l.id,
     component_label: l.component_id ? compLabel.get(l.component_id) ?? "—" : "—",
     qty: l.qty,
+    consumed: l.component_id ? consumedQtyByComponent.get(l.component_id) ?? 0 : 0,
   }));
 
   const consumedLotIds = [...new Set((movements ?? []).map((m) => m.lot_id).filter(Boolean))] as string[];
@@ -67,7 +78,19 @@ export default async function RequisitionDetailPage({ params }: { params: Promis
       <Link href="/requisitions" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> All requisitions
       </Link>
-      <PageHeader title={req.req_no} description={project?.data?.project_no ? `Project ${project.data.project_no}` : "Stock requisition"} />
+      <PageHeader
+        title={req.req_no}
+        description={
+          project?.data?.is_internal
+            ? `Internal consumption — ${project.data.project_no}` +
+              ([project.data.department, project.data.consumption_reason].filter(Boolean).length
+                ? ` (${[project.data.department, project.data.consumption_reason].filter(Boolean).join(" — ")})`
+                : "")
+            : project?.data?.project_no
+            ? `Project ${project.data.project_no}`
+            : "Stock requisition"
+        }
+      />
 
       <Card className="mb-6">
         <CardContent className="p-5">

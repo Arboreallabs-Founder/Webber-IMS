@@ -2,16 +2,32 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, PackageCheck } from "lucide-react";
+import { Trash2, PackageCheck, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { MobileRowCard } from "@/components/ui/mobile-row-card";
 import { formatNumber } from "@/lib/utils";
 import { removeReqLine, updateReqStatus, issueRequisition, type ActionResult } from "../actions";
 
-type Line = { id: string; component_label: string; qty: number };
+type Line = { id: string; component_label: string; qty: number; consumed?: number };
+
+const EPS = 1e-6;
+function fulfillmentBadge(qty: number, consumed: number) {
+  if (consumed >= qty - EPS) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700">
+        <CheckCircle2 className="size-3.5" /> Done
+      </span>
+    );
+  }
+  if (consumed > EPS) {
+    return <Badge variant="warning">{formatNumber(consumed)} / {formatNumber(qty)}</Badge>;
+  }
+  return null;
+}
 
 const STATUSES: { value: string; label: string }[] = [
   { value: "open",             label: "Open" },
@@ -100,6 +116,7 @@ export function RequisitionEditor({
                 <TableRow>
                   <TableHead>Component</TableHead>
                   <TableHead>Qty requested</TableHead>
+                  <TableHead>Consumed</TableHead>
                   {canRequest && <TableHead className="w-12" />}
                 </TableRow>
               </TableHeader>
@@ -108,6 +125,7 @@ export function RequisitionEditor({
                   <TableRow key={l.id}>
                     <TableCell className="font-medium">{l.component_label}</TableCell>
                     <TableCell>{formatNumber(l.qty)}</TableCell>
+                    <TableCell>{fulfillmentBadge(l.qty, l.consumed ?? 0) ?? <span className="text-muted-foreground">—</span>}</TableCell>
                     {canRequest && (
                       <TableCell>
                         <Button
@@ -133,7 +151,10 @@ export function RequisitionEditor({
               <MobileRowCard
                 key={l.id}
                 title={l.component_label}
-                fields={[{ label: "Qty requested", value: formatNumber(l.qty) }]}
+                fields={[
+                  { label: "Qty requested", value: formatNumber(l.qty) },
+                  { label: "Consumed", value: fulfillmentBadge(l.qty, l.consumed ?? 0) ?? "—" },
+                ]}
                 actions={
                   canRequest ? (
                     <Button

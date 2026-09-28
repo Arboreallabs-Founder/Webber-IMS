@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startNavProgress } from "@/components/navigation-progress";
-import { ShoppingCart, CheckCircle2, AlertTriangle, MinusCircle, ArrowRight, Shuffle, Repeat } from "lucide-react";
+import { ShoppingCart, CheckCircle2, AlertTriangle, MinusCircle, ArrowRight, Shuffle, Repeat, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -25,6 +25,7 @@ type Row = {
 };
 
 type ReplaceResult = { ok?: true; error?: string; message?: string };
+type RequisitionResult = { ok?: true; error?: string; id?: string };
 
 export function ShortfallPanel({
   projectId,
@@ -32,12 +33,14 @@ export function ShortfallPanel({
   rows,
   canProcure,
   replaceAction,
+  raiseRequisitionAction,
 }: {
   projectId: string;
   bomId?: string | null;
   rows: Row[];
   canProcure: boolean;
   replaceAction?: (fd: FormData) => Promise<ReplaceResult>;
+  raiseRequisitionAction?: (fd: FormData) => Promise<RequisitionResult>;
 }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -83,6 +86,22 @@ export function ShortfallPanel({
     }
   }
 
+  async function raiseRequisition() {
+    if (!raiseRequisitionAction) return;
+    setBusy("req"); setError(null); setRaised(null);
+    const fd = new FormData();
+    fd.set("project_id", projectId);
+    const res = await raiseRequisitionAction(fd);
+    setBusy(null);
+    if (res?.error) { setError(res.error); return; }
+    if (res.id) {
+      startNavProgress();
+      router.push(`/requisitions/${res.id}`);
+    } else {
+      router.refresh();
+    }
+  }
+
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">Generate the BOM to see the stock-check shortfall.</p>;
   }
@@ -98,6 +117,15 @@ export function ShortfallPanel({
           >
             <ShoppingCart className="size-4" /> Raise PO for shortfall
           </Button>
+          {raiseRequisitionAction && (
+            <Button
+              variant="outline"
+              loading={busy === "req"} disabled={!hasShortfall}
+              onClick={raiseRequisition}
+            >
+              <ClipboardList className="size-4" /> Raise requisition for shortfall
+            </Button>
+          )}
         </div>
       )}
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
