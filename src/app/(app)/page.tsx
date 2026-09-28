@@ -13,7 +13,7 @@ export default async function DashboardPage() {
   const finance = canSeeFinancials(profile?.role);
   const supabase = await createClient();
 
-  const [activeP, openPo, overdue, untagged, missingPo, stale, variance, costingRes, onhandRes, projectsRes, customersRes] =
+  const [activeP, openPo, overdue, untagged, missingPo, stale, variance, costingRes, onhandRes, inStockLots, projectsRes, customersRes] =
     await Promise.all([
       supabase.from("projects").select("*", { count: "exact", head: true }).neq("status", "closed"),
       supabase.from("po_lines").select("*", { count: "exact", head: true }).in("line_status", ["pending", "partial"]),
@@ -24,6 +24,10 @@ export default async function DashboardPage() {
       supabase.from("v_bom_variance").select("*", { count: "exact", head: true }).or("uncovered_qty.gt.0,receive_gap.gt.0"),
       supabase.from("v_project_costing").select("*"),
       finance ? supabase.from("v_component_on_hand").select("stock_value") : Promise.resolve({ data: [] }),
+      // Open + issued(blocked) stock only — a component sitting at 'consumed'
+      // shouldn't count as "in inventory" even if some other lot's rounding
+      // left it a stray non-zero qty_on_hand.
+      supabase.from("inventory_lots").select("component_id").in("status", ["open", "issued"]).gt("qty_on_hand", 0),
       supabase.from("projects").select("id, customer_id"),
       getCustomers(),
     ]);
@@ -33,9 +37,11 @@ export default async function DashboardPage() {
 
   const c = (r: { count: number | null }) => r.count ?? 0;
   const stockValue = finance ? (onhandRes.data ?? []).reduce((s, r) => s + Number((r as { stock_value?: number }).stock_value ?? 0), 0) : null;
+  const componentsInStock = new Set((inStockLots.data ?? []).map((l) => l.component_id)).size;
 
-  const stats: { label: string; value: string; tone?: string }[] = [
+  const stats: { label: string; value: string; tone?: string; href?: string }[] = [
     ...(stockValue !== null ? [{ label: "Live stock value", value: formatINR(stockValue) }] : []),
+    { label: "Components in inventory", value: formatNumber(componentsInStock), href: "/inventory" },
     { label: "Active projects", value: formatNumber(c(activeP)) },
     { label: "Open PO lines", value: formatNumber(c(openPo)) },
     { label: "Overdue POs", value: formatNumber(c(overdue)), tone: c(overdue) > 0 ? "text-red-600" : undefined },
@@ -61,14 +67,23 @@ export default async function DashboardPage() {
       <PageHeader title={`Welcome${profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}`} description="Live operations snapshot, straight off the ledger." />
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {stats.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{s.label}</p>
-              <p className={`mt-1 text-2xl font-semibold ${s.tone ?? ""}`}>{s.value}</p>
-            </CardContent>
-          </Card>
-        ))}
+        {stats.map((s) => {
+          const card = (
+            <Card className={s.href ? "h-full transition-colors hover:border-primary/50 hover:bg-accent/40" : undefined}>
+              <CardContent className="p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{s.label}</p>
+                <p className={`mt-1 text-2xl font-semibold ${s.tone ?? ""}`}>{s.value}</p>
+              </CardContent>
+            </Card>
+          );
+          return s.href ? (
+            <Link key={s.label} href={s.href}>
+              {card}
+            </Link>
+          ) : (
+            <div key={s.label}>{card}</div>
+          );
+        })}
       </section>
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
