@@ -37,6 +37,22 @@ export async function submitIrn(fd: FormData): Promise<ActionResult> {
 
   const supabase = await createClient();
 
+  // MPN: either an existing one was picked, or a brand-new one was typed —
+  // create it only now, as part of this same submission, so typing a new
+  // MPN and never actually submitting never leaves it saved on its own.
+  let mpn_id = String(fd.get("mpn_id") ?? "") || null;
+  const newMpnText = String(fd.get("new_mpn_text") ?? "").trim();
+  if (newMpnText) {
+    const { data: newMpn, error: mpnErr } = await supabase
+      .from("component_mpns")
+      .insert({ component_id, mpn: newMpnText, created_by: p.id })
+      .select("id").single();
+    if (mpnErr) {
+      return { error: mpnErr.message.includes("component_mpns_mpn_key") ? "This MPN already exists on another component." : mpnErr.message };
+    }
+    mpn_id = newMpn.id;
+  }
+
   // Best-effort: if the submitter has a saved signature, submit_irn can
   // auto-approve inline when they're Admin/Team Lead — same silent
   // no-op-if-missing pattern as createGrn's auto-sign.
@@ -63,7 +79,7 @@ export async function submitIrn(fd: FormData): Promise<ActionResult> {
     p_target_lot_id: String(fd.get("target_lot_id") ?? "") || null,
     p_piece_weight: num(fd, "piece_weight"),
     p_signature_id: mySig?.id ?? null,
-    p_mpn_id: String(fd.get("mpn_id") ?? "") || null,
+    p_mpn_id: mpn_id,
     // An existing box already has a location — never let a top-up change it.
     p_location: String(fd.get("target_lot_id") ?? "") ? null : String(fd.get("location") ?? "").trim() || null,
   });

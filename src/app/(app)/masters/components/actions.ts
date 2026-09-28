@@ -110,23 +110,3 @@ export async function upsert(fd: FormData): Promise<ActionResult> {
 export async function remove(fd: FormData): Promise<ActionResult> {
   return deleteRecord("components", fd);
 }
-
-/** Add a single MPN to an existing component — used by GRN's inline "add new MPN" popup. */
-export async function addMpn(fd: FormData): Promise<ActionResult> {
-  const profile = await getProfile();
-  if (!profile) return { error: "Not authorized." };
-  const componentId = String(fd.get("component_id") ?? "").trim();
-  const mpn = String(fd.get("mpn") ?? "").trim();
-  if (!componentId) return { error: "Missing component." };
-  if (!mpn) return { error: "Enter an MPN." };
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("component_mpns")
-    .insert({ component_id: componentId, mpn, created_by: profile.id })
-    .select("id").single();
-  if (error) {
-    return { error: error.message.includes("component_mpns_mpn_key") ? "This MPN already exists on another component." : error.message };
-  }
-  return { ok: true, id: data.id };
-}

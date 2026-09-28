@@ -57,7 +57,6 @@ export function GrnReceiver({
   vendorOptions,
   templateOptions,
   mpnsByComponent,
-  addMpnAction,
 }: {
   grnId: string;
   postedLines: Posted[];
@@ -83,8 +82,6 @@ export function GrnReceiver({
   templateOptions?: { value: string; label: string }[];
   /** This component's known MPNs (one WPC can be sourced from several manufacturers). */
   mpnsByComponent?: Record<string, { id: string; mpn: string }[]>;
-  /** Optional: add a new MPN to a component inline from this GRN's receiving form. */
-  addMpnAction?: (fd: FormData) => Promise<ActionResult>;
 }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -104,7 +101,6 @@ export function GrnReceiver({
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
   const [mpnId, setMpnId] = React.useState("");
   const [extraMpns, setExtraMpns] = React.useState<Record<string, { id: string; mpn: string }[]>>({});
-  const [mpnCreating, setMpnCreating] = React.useState(false);
   const [location, setLocation] = React.useState("");
 
   // Components created inline this session, merged on top of the server list.
@@ -253,20 +249,19 @@ export function GrnReceiver({
     router.refresh();
   }
 
-  async function handleCreateMpn(query: string) {
-    if (!addMpnAction || !manualComp || !query) return;
-    setError(null);
-    setMpnCreating(true);
-    const fd = new FormData();
-    fd.set("component_id", manualComp);
-    fd.set("mpn", query);
-    const res = await addMpnAction(fd);
-    setMpnCreating(false);
-    if (res?.error) { setError(res.error); return; }
-    if (res.id) {
-      setExtraMpns((prev) => ({ ...prev, [manualComp]: [...(prev[manualComp] ?? []), { id: res.id!, mpn: query }] }));
-      setMpnId(res.id);
-    }
+  // Only staged locally, never saved — this component isn't submitted to the
+  // server until the receipt line itself is actually added, so a new MPN
+  // typed here and then abandoned never ends up saved on its own. The
+  // "new:" id is a local marker only; onManualSubmit swaps it for the raw
+  // text so the server creates the real row as part of adding the line.
+  function handleCreateMpn(query: string) {
+    if (!manualComp || !query) return;
+    const fakeId = `new:${query}`;
+    setExtraMpns((prev) => ({
+      ...prev,
+      [manualComp]: [...(prev[manualComp] ?? []).filter((e) => e.mpn !== query), { id: fakeId, mpn: query }],
+    }));
+    setMpnId(fakeId);
   }
 
   async function runIrn(fd: FormData, onOk?: () => void) {
@@ -294,7 +289,18 @@ export function GrnReceiver({
     }
     // For length/weight, override qty_received with the computed total
     if (derivedQty !== null) fd.set("qty_received", String(derivedQty));
-    if (mpnRelevant && mpnId) fd.set("mpn_id", mpnId);
+    if (mpnRelevant && mpnId) {
+      // A pending, not-yet-saved MPN — the combobox's own hidden input already
+      // put the "new:" marker into mpn_id via plain FormData(form); swap it
+      // for the raw text so the server creates the real row as part of this
+      // submission, instead of sending a fake value as a real id.
+      if (mpnId.startsWith("new:")) {
+        fd.delete("mpn_id");
+        fd.set("new_mpn_text", mpnId.slice(4));
+      } else {
+        fd.set("mpn_id", mpnId);
+      }
+    }
     if (locationRelevant && location.trim()) fd.set("location", location.trim());
 
     if (poPriceConflict) {
@@ -326,6 +332,10 @@ export function GrnReceiver({
         setAnswers({});
         setMpnId("");
         setLocation("");
+        // The pending entry either just became a real row (next refresh picks
+        // it up under its real id) or was never touched — either way it's
+        // done serving its purpose.
+        setExtraMpns((prev) => ({ ...prev, [manualComp]: (prev[manualComp] ?? []).filter((e) => !e.id.startsWith("new:")) }));
       });
       return;
     }
@@ -342,6 +352,7 @@ export function GrnReceiver({
       setUnitCost("");
       setMpnId("");
       setLocation("");
+      setExtraMpns((prev) => ({ ...prev, [manualComp]: (prev[manualComp] ?? []).filter((e) => !e.id.startsWith("new:")) }));
     });
   }
 
@@ -400,9 +411,8 @@ export function GrnReceiver({
                   value={mpnId}
                   onChange={setMpnId}
                   placeholder="Type to search, or type a new one to add it…"
-                  onCreate={addMpnAction ? handleCreateMpn : undefined}
-                  creating={mpnCreating}
-                  createLabel={(q) => `+ Add "${q}" as new MPN`}
+                  onCreate={handleCreateMpn}
+                  createLabel={(q) => `+ Use "${q}" as new MPN (saved when you add this line)`}
                 />
                 {mpnOptions.length === 0 && (
                   <span className="text-xs text-muted-foreground">No MPNs recorded for this component yet — type one above to add it.</span>

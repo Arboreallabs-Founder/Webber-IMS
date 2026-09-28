@@ -14,7 +14,6 @@ import { GrnReceiver } from "./grn-receiver";
 import { submitIrn } from "../irn-actions";
 import { signGrn } from "../actions";
 import { createComponentQuick } from "../../masters/bom-builder/actions";
-import { addMpn } from "../../masters/components/actions";
 
 export default async function GrnDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -239,7 +238,6 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
         vendorOptions={vendorOptions}
         templateOptions={templateOptions}
         mpnsByComponent={mpnsByComponent}
-        addMpnAction={addMpn}
       />
     </div>
   );

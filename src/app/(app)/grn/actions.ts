@@ -115,11 +115,26 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
   const pieceWeight = Number(fd.get("piece_weight") ?? "") || null;
 
   const target_lot_id = String(fd.get("target_lot_id") ?? "") || null;
-  const mpn_id = String(fd.get("mpn_id") ?? "") || null;
   // An existing box already has a location — never let a top-up change it.
   const location = target_lot_id ? null : String(fd.get("location") ?? "").trim() || null;
 
   const supabase = await createClient();
+
+  // MPN: either an existing one was picked, or a brand-new one was typed —
+  // create it only now, as part of this same receipt, so typing a new MPN
+  // and never actually adding the line never leaves it saved on its own.
+  let mpn_id = String(fd.get("mpn_id") ?? "") || null;
+  const newMpnText = String(fd.get("new_mpn_text") ?? "").trim();
+  if (newMpnText) {
+    const { data: newMpn, error: mpnErr } = await supabase
+      .from("component_mpns")
+      .insert({ component_id, mpn: newMpnText, created_by: p.id })
+      .select("id").single();
+    if (mpnErr) {
+      return { error: mpnErr.message.includes("component_mpns_mpn_key") ? "This MPN already exists on another component." : mpnErr.message };
+    }
+    mpn_id = newMpn.id;
+  }
 
   // Block over-receipt: this line may not push the PO line's total received
   // quantity above what was ordered. Only applies when receiving against a PO
