@@ -1448,6 +1448,69 @@ export type Database = {
           },
         ]
       }
+      inventory_lot_mpns: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          lot_id: string
+          mpn_id: string
+          qty: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lot_id: string
+          mpn_id: string
+          qty?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lot_id?: string
+          mpn_id?: string
+          qty?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_lot_mpns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_lot_mpns_lot_id_fkey"
+            columns: ["lot_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_lot_mpns_lot_id_fkey"
+            columns: ["lot_id"]
+            isOneToOne: false
+            referencedRelation: "v_inventory_lots_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_lot_mpns_lot_id_fkey"
+            columns: ["lot_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_stock"
+            referencedColumns: ["lot_id"]
+          },
+          {
+            foreignKeyName: "inventory_lot_mpns_mpn_id_fkey"
+            columns: ["mpn_id"]
+            isOneToOne: false
+            referencedRelation: "component_mpns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_lots: {
         Row: {
           component_id: string | null
@@ -1460,7 +1523,6 @@ export type Database = {
           jw_stage: Database["public"]["Enums"]["jw_stage"] | null
           location: string | null
           lot_code: string
-          mpn_id: string | null
           parent_lot_id: string | null
           piece_weight: number | null
           project_id: string | null
@@ -1482,7 +1544,6 @@ export type Database = {
           jw_stage?: Database["public"]["Enums"]["jw_stage"] | null
           location?: string | null
           lot_code: string
-          mpn_id?: string | null
           parent_lot_id?: string | null
           piece_weight?: number | null
           project_id?: string | null
@@ -1504,7 +1565,6 @@ export type Database = {
           jw_stage?: Database["public"]["Enums"]["jw_stage"] | null
           location?: string | null
           lot_code?: string
-          mpn_id?: string | null
           parent_lot_id?: string | null
           piece_weight?: number | null
           project_id?: string | null
@@ -1571,13 +1631,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_untagged_receipts"
             referencedColumns: ["grn_line_id"]
-          },
-          {
-            foreignKeyName: "inventory_lots_mpn_id_fkey"
-            columns: ["mpn_id"]
-            isOneToOne: false
-            referencedRelation: "component_mpns"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "inventory_lots_parent_lot_id_fkey"

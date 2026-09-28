@@ -19,7 +19,7 @@ import { addGrnLine, type ActionResult } from "../actions";
 type Posted = { id: string; component_label: string; qty: number; is_untagged: boolean; lot_code: string | null; lot_id: string | null; blocked_project: string | null };
 type OpenPoEntry = { po_line_id: string; po_no: string; tag: string; project_id: string | null; remaining: number };
 type Component = { id: string; component_no: string; name: string; quantity_type: string; tracking_mode: string; inspection_template_id?: string | null };
-type OpenBox = { id: string; lot_code: string; qty_on_hand: number; container_no: string | null; location: string | null };
+type OpenBox = { id: string; lot_code: string; qty_on_hand: number; container_no: string | null; location: string | null; mpns?: { label: string; qty: number }[] };
 type TemplateField = { id: string; label: string; field_type: string; options: string[] | null; is_required: boolean };
 type IrnRow = { id: string; irn_no: string; component_label: string; qty: number; status: string; generated_by: string; rejection_reason: string | null };
 type IrnActionResult = { ok?: true; error?: string; id?: string; irn_no?: string; status?: string };
@@ -137,10 +137,12 @@ export function GrnReceiver({
     () => (manualComp ? [...(mpnsByComponent?.[manualComp] ?? []), ...(extraMpns[manualComp] ?? [])] : []),
     [manualComp, mpnsByComponent, extraMpns],
   );
-  // Adding to an existing box keeps whatever MPN/location that box already
-  // has — both only matter when this receipt creates a new lot.
-  const mpnRelevant = manualComp && !(trackingMode === "box" && !!targetLotId);
-  const locationRelevant = mpnRelevant;
+  // A box can genuinely hold more than one MPN mixed together, so MPN stays
+  // relevant even when topping up an existing box — it records which
+  // manufacturer *this* receipt is. Location is different: a box only ever
+  // has one, so that field stays blocked once an existing box is picked.
+  const mpnRelevant = !!manualComp;
+  const locationRelevant = manualComp && !(trackingMode === "box" && !!targetLotId);
   const existingBox = trackingMode === "box" && targetLotId ? boxesForComp.find((b) => b.id === targetLotId) : undefined;
   const allTemplateFields = selectedComp?.inspection_template_id ? (templateFieldsByTemplate[selectedComp.inspection_template_id] ?? []) : [];
   const excludedIds = React.useMemo(() => new Set(manualComp ? (excludedFieldIdsByComponent[manualComp] ?? []) : []), [manualComp, excludedFieldIdsByComponent]);
@@ -201,9 +203,10 @@ export function GrnReceiver({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualComp]);
 
-  // Picking an existing box supersedes MPN/location choice — that box already has both.
+  // Picking an existing box supersedes location choice — a box only has one.
+  // MPN stays independent: a box can hold more than one, so it's unaffected.
   React.useEffect(() => {
-    if (targetLotId) { setMpnId(""); setLocation(""); }
+    if (targetLotId) setLocation("");
   }, [targetLotId]);
 
   async function run(fd: FormData, key: string, onOk?: () => void) {
@@ -380,28 +383,31 @@ export function GrnReceiver({
               </div>
             </div>
 
-            {/* MPN — which manufacturer's part this receipt actually is */}
-            {manualComp && (
-              mpnRelevant ? (
-                <div className="space-y-1.5">
-                  <Label>MPN (Manufacturer Part No.)</Label>
-                  <Combobox
-                    items={mpnOptions.map((m) => ({ value: m.id, label: m.mpn }))}
-                    name="mpn_id"
-                    value={mpnId}
-                    onChange={setMpnId}
-                    placeholder="Type to search, or type a new one to add it…"
-                    onCreate={addMpnAction ? handleCreateMpn : undefined}
-                    creating={mpnCreating}
-                    createLabel={(q) => `+ Add "${q}" as new MPN`}
-                  />
-                  {mpnOptions.length === 0 && (
-                    <span className="text-xs text-muted-foreground">No MPNs recorded for this component yet — type one above to add it.</span>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">MPN not needed — adding into an existing box, which already has one.</p>
-              )
+            {/* MPN — which manufacturer's part this receipt actually is. Stays
+                relevant even when topping up an existing box — a box can
+                genuinely hold more than one MPN mixed together. */}
+            {mpnRelevant && (
+              <div className="space-y-1.5">
+                <Label>MPN (Manufacturer Part No.)</Label>
+                <Combobox
+                  items={mpnOptions.map((m) => ({ value: m.id, label: m.mpn }))}
+                  name="mpn_id"
+                  value={mpnId}
+                  onChange={setMpnId}
+                  placeholder="Type to search, or type a new one to add it…"
+                  onCreate={addMpnAction ? handleCreateMpn : undefined}
+                  creating={mpnCreating}
+                  createLabel={(q) => `+ Add "${q}" as new MPN`}
+                />
+                {mpnOptions.length === 0 && (
+                  <span className="text-xs text-muted-foreground">No MPNs recorded for this component yet — type one above to add it.</span>
+                )}
+                {existingBox && existingBox.mpns && existingBox.mpns.length > 0 && (
+                  <span className="block text-xs text-muted-foreground">
+                    This box currently has: {existingBox.mpns.map((m) => `${m.label} × ${formatNumber(m.qty)}`).join(", ")}
+                  </span>
+                )}
+              </div>
             )}
 
             {/* Location — where this box/lot is physically stored */}

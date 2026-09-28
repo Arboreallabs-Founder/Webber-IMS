@@ -116,10 +116,23 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
     .eq("status", "open")
     .not("container_no", "is", null)
     .gt("qty_on_hand", 0);
-  const openBoxesByComponent: Record<string, { id: string; lot_code: string; qty_on_hand: number; container_no: string | null; location: string | null }[]> = {};
+  // Per-box MPN breakdown — a box can genuinely hold more than one MPN.
+  const openBoxIds = (openBoxes ?? []).map((b) => b.id);
+  const { data: boxMpnRows } = openBoxIds.length
+    ? await supabase.from("inventory_lot_mpns").select("lot_id, qty, component_mpns(mpn)").in("lot_id", openBoxIds)
+    : { data: [] };
+  const mpnsByLot = new Map<string, { label: string; qty: number }[]>();
+  for (const r of boxMpnRows ?? []) {
+    const mpnRow = r.component_mpns as unknown as { mpn: string } | { mpn: string }[] | null;
+    const label = (Array.isArray(mpnRow) ? mpnRow[0]?.mpn : mpnRow?.mpn) ?? "—";
+    (mpnsByLot.get(r.lot_id) ?? mpnsByLot.set(r.lot_id, []).get(r.lot_id)!).push({ label, qty: Number(r.qty ?? 0) });
+  }
+
+  const openBoxesByComponent: Record<string, { id: string; lot_code: string; qty_on_hand: number; container_no: string | null; location: string | null; mpns: { label: string; qty: number }[] }[]> = {};
   for (const b of openBoxes ?? []) {
     (openBoxesByComponent[b.component_id] ??= []).push({
       id: b.id, lot_code: b.lot_code, qty_on_hand: Number(b.qty_on_hand ?? 0), container_no: b.container_no, location: b.location,
+      mpns: mpnsByLot.get(b.id) ?? [],
     });
   }
 

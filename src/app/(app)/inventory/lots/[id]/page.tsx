@@ -30,7 +30,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
   const { data: lot } = await supabase.from("inventory_lots").select("*").eq("id", id).single();
   if (!lot) notFound();
 
-  const [{ data: comp }, { data: vendor }, { data: project }, { data: moves }, { data: projects }, { data: parentLot }, customers] =
+  const [{ data: comp }, { data: vendor }, { data: project }, { data: moves }, { data: projects }, { data: parentLot }, customers, { data: mpnRows }] =
     await Promise.all([
       lot.component_id ? supabase.from("components").select("component_no, name").eq("id", lot.component_id).maybeSingle() : Promise.resolve({ data: null }),
       lot.vendor_id ? supabase.from("vendors").select("name").eq("id", lot.vendor_id).maybeSingle() : Promise.resolve({ data: null }),
@@ -39,8 +39,14 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
       supabase.from("projects").select("id, project_no, customer_id").order("project_no"),
       lot.parent_lot_id ? supabase.from("inventory_lots").select("id, lot_code").eq("id", lot.parent_lot_id).maybeSingle() : Promise.resolve({ data: null }),
       getCustomers(),
+      // A box can genuinely hold more than one MPN mixed together.
+      supabase.from("inventory_lot_mpns").select("qty, component_mpns(mpn)").eq("lot_id", id).order("qty", { ascending: false }),
     ]);
   const isBox = !!lot.container_no;
+  const mpnBreakdown = (mpnRows ?? []).map((r) => {
+    const mpnRow = r.component_mpns as unknown as { mpn: string } | { mpn: string }[] | null;
+    return { label: (Array.isArray(mpnRow) ? mpnRow[0]?.mpn : mpnRow?.mpn) ?? "—", qty: Number(r.qty ?? 0) };
+  });
 
   const issueMoveIds = (moves ?? []).filter((m) => m.movement_type === "issue").map((m) => m.id);
   const { data: reversals } = isAdmin && issueMoveIds.length
@@ -103,6 +109,19 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
           </Link>
         </Card>
       </div>
+
+      {mpnBreakdown.length > 0 && (
+        <Card className="mb-6">
+          <CardContent className="p-5">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">MPN breakdown</p>
+            <div className="flex flex-wrap gap-2">
+              {mpnBreakdown.map((m) => (
+                <Badge key={m.label} variant="secondary">{m.label} × {formatNumber(m.qty)}</Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {parentLot && (
         <p className="mb-4 text-sm text-muted-foreground">
