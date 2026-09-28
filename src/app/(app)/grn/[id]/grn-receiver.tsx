@@ -133,10 +133,15 @@ export function GrnReceiver({
   const qt = selectedComp?.quantity_type ?? "nos";
   const trackingMode = selectedComp?.tracking_mode ?? "box";
   const boxesForComp = manualComp ? (openBoxesByComponent[manualComp] ?? []) : [];
-  const mpnOptions = React.useMemo(
-    () => (manualComp ? [...(mpnsByComponent?.[manualComp] ?? []), ...(extraMpns[manualComp] ?? [])] : []),
-    [manualComp, mpnsByComponent, extraMpns],
-  );
+  const mpnOptions = React.useMemo(() => {
+    if (!manualComp) return [];
+    const fromServer = mpnsByComponent?.[manualComp] ?? [];
+    // extraMpns holds MPNs created earlier this session, kept only until the
+    // server's own list catches up with them after a refresh — once it does,
+    // drop the local copy so the same MPN doesn't render twice.
+    const stillPending = (extraMpns[manualComp] ?? []).filter((e) => !fromServer.some((m) => m.id === e.id));
+    return [...fromServer, ...stillPending];
+  }, [manualComp, mpnsByComponent, extraMpns]);
   // A box can genuinely hold more than one MPN mixed together, so MPN stays
   // relevant even when topping up an existing box — it records which
   // manufacturer *this* receipt is. Location is different: a box only ever

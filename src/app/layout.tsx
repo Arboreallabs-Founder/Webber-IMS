@@ -26,7 +26,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      {/* Browser extensions (Grammarly, password managers, etc.) inject their
+          own attributes onto <body> before React hydrates, which otherwise
+          logs a harmless hydration-mismatch warning on every load. */}
+      <body suppressHydrationWarning>
         <NavigationProgress />
         {children}
         <script
