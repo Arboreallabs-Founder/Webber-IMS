@@ -109,7 +109,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
   const { id } = await params;
   const profile = await getProfile();
   const finance = canSeeFinancials(profile?.role);
-  const isAdmin = profile?.role === "admin" || profile?.role === "team_lead";
+  const isAdmin = profile?.role === "admin" || profile?.role === "team_lead" || profile?.role === "inventory_admin";
   const supabase = await createClient();
 
   const { data: comp } = await supabase

@@ -15,8 +15,8 @@ export type ResolvedLot = {
   project_no: string | null;
 };
 
-const OPERATE = ["admin", "team_lead", "team_member"]; // consume / stock-take
-const MANAGE = ["admin", "team_lead"]; // transfer (lot update)
+const OPERATE = ["admin", "team_lead", "team_member", "inventory_admin"]; // consume / stock-take
+const MANAGE = ["admin", "team_lead", "inventory_admin"]; // transfer (lot update)
 
 async function operator() {
   const p = await getProfile();
@@ -153,7 +153,7 @@ export async function adjustLot(fd: FormData): Promise<ActionResult> {
 /** Unissue a lot: remove project reservation, return to open (admin/team_lead only). */
 export async function unissueLot(fd: FormData): Promise<ActionResult> {
   const p = await getProfile();
-  if (!p || !MANAGE.includes(p.role)) return { error: "Only Admin / Team Lead can unissue a lot." };
+  if (!p || !MANAGE.includes(p.role)) return { error: "Only Admin / Team Lead / Inventory Admin can unissue a lot." };
   const lot_id = String(fd.get("lot_id"));
   const component_id = String(fd.get("component_id") ?? "");
   const supabase = await createClient();
@@ -264,7 +264,7 @@ export async function reverseConsumption(fd: FormData): Promise<ActionResult> {
 /** Transfer a lot to a new location (admin/team_lead — updates the lot). */
 export async function transferLot(fd: FormData): Promise<ActionResult> {
   const p = await getProfile();
-  if (!p || !MANAGE.includes(p.role)) return { error: "Only Admin / Team Lead can transfer." };
+  if (!p || !MANAGE.includes(p.role)) return { error: "Only Admin / Team Lead / Inventory Admin can transfer." };
   const lot_id = String(fd.get("lot_id"));
   const location = String(fd.get("location") ?? "").trim() || null;
   const supabase = await createClient();

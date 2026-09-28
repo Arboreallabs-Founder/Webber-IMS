@@ -5194,7 +5194,12 @@ export type Database = {
         | "on_hold"
       quantity_type: "nos" | "length" | "area" | "weight"
       req_status: "open" | "partially_ordered" | "ordered" | "closed"
-      role: "admin" | "founder" | "team_lead" | "team_member"
+      role:
+        | "admin"
+        | "founder"
+        | "team_lead"
+        | "team_member"
+        | "inventory_admin"
       tracking_mode: "item" | "box" | "bulk"
     }
     CompositeTypes: {
@@ -5360,7 +5365,7 @@ export const Constants = {
       ],
       quantity_type: ["nos", "length", "area", "weight"],
       req_status: ["open", "partially_ordered", "ordered", "closed"],
-      role: ["admin", "founder", "team_lead", "team_member"],
+      role: ["admin", "founder", "team_lead", "team_member", "inventory_admin"],
       tracking_mode: ["item", "box", "bulk"],
     },
   },

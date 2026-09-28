@@ -6,8 +6,8 @@ import { getProfile } from "@/lib/auth";
 
 export type ActionResult = { ok?: true; error?: string; id?: string };
 
-const PROCURE = ["admin", "team_lead"];
-const REQUEST = ["admin", "team_lead", "team_member"];
+const PROCURE = ["admin", "team_lead", "inventory_admin"];
+const REQUEST = ["admin", "team_lead", "team_member", "inventory_admin"];
 
 async function profileWith(roles: string[]) {
   const p = await getProfile();
@@ -57,7 +57,7 @@ export async function updateReqStatus(fd: FormData): Promise<ActionResult> {
 
 export async function issueRequisition(fd: FormData): Promise<ActionResult> {
   const p = await profileWith(PROCURE);
-  if (!p) return { error: "Only Admin / Team Lead can issue requisitions." };
+  if (!p) return { error: "Only Admin / Team Lead / Inventory Admin can issue requisitions." };
   const requisition_id = String(fd.get("requisition_id"));
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("issue_requisition", {
@@ -77,7 +77,7 @@ export async function issueRequisition(fd: FormData): Promise<ActionResult> {
 
 export async function raiseRequisitionFromShortfall(fd: FormData): Promise<ActionResult> {
   const p = await profileWith(PROCURE);
-  if (!p) return { error: "Only Admin / Team Lead can raise requisitions from shortfall." };
+  if (!p) return { error: "Only Admin / Team Lead / Inventory Admin can raise requisitions from shortfall." };
   const project_id = String(fd.get("project_id"));
   const supabase = await createClient();
   const { data: short } = await supabase

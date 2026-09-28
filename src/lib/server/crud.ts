@@ -2,6 +2,9 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile, canWriteMasters } from "@/lib/auth";
 import { MASTER_TAGS } from "@/lib/masters-data";
+import type { Role } from "@/lib/roles";
+
+type CanWrite = (role: Role | undefined | null) => boolean;
 
 export type ParseType = "string" | "number" | "boolean";
 export type ActionResult = { ok?: true; error?: string; redirect?: string; id?: string };
@@ -51,9 +54,10 @@ export async function upsertRecord(
   table: string,
   fields: Record<string, ParseType>,
   fd: FormData,
+  canWrite: CanWrite = canWriteMasters,
 ): Promise<ActionResult> {
   const profile = await getProfile();
-  if (!canWriteMasters(profile?.role)) return { error: "You don't have permission to edit master data." };
+  if (!canWrite(profile?.role)) return { error: "You don't have permission to edit master data." };
 
   const supabase = await createClient();
   const id = fd.get("id");
@@ -123,9 +127,9 @@ export function parseOptions(raw: string): unknown {
   }
 }
 
-export async function deleteRecord(table: string, fd: FormData): Promise<ActionResult> {
+export async function deleteRecord(table: string, fd: FormData, canWrite: CanWrite = canWriteMasters): Promise<ActionResult> {
   const profile = await getProfile();
-  if (!canWriteMasters(profile?.role)) return { error: "You don't have permission to delete master data." };
+  if (!canWrite(profile?.role)) return { error: "You don't have permission to delete master data." };
   const id = fd.get("id");
   if (!id) return { error: "Missing id." };
   const supabase = await createClient();

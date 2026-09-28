@@ -8,6 +8,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   founder: "Founder",
   team_lead: "Team Lead",
   team_member: "Team Member",
+  inventory_admin: "Inventory Admin",
 };
 
 /** Roles permitted to see pricing / financial columns. */
@@ -19,6 +20,17 @@ export function canSeeFinancials(role: Role | undefined | null) {
 
 export function canWriteMasters(role: Role | undefined | null) {
   return role === "admin" || role === "team_lead";
+}
+
+/**
+ * Components master only — inventory_admin is scoped to Components +
+ * Inventory + GRN + Requisitions and has no write path into the other
+ * masters (vendors, customers, categories, products, BOM templates,
+ * inspection templates, approval rights), which all stay gated by
+ * `canWriteMasters` above.
+ */
+export function canWriteComponents(role: Role | undefined | null) {
+  return role === "admin" || role === "team_lead" || role === "inventory_admin";
 }
 
 /**

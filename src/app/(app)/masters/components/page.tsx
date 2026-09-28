@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteComponents, canSeeFinancials } from "@/lib/auth";
 import { getComponents, getVendors } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
@@ -116,7 +116,7 @@ export default async function ComponentsPage() {
         fields={fields}
         upsertAction={upsert}
         deleteAction={remove}
-        canWrite={canWriteMasters(profile?.role)}
+        canWrite={canWriteComponents(profile?.role)}
         canSeeFinancials={finance}
         searchKeys={["component_no", "mpn_display", "name", "type", "grade"]}
         dialogClassName="max-w-2xl"

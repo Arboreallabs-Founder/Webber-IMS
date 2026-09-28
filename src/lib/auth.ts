@@ -8,7 +8,7 @@ import type { Role } from "@/lib/roles";
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 // Re-export client-safe helpers so server code can import from one place.
-export { ROLE_LABELS, FINANCE_ROLES, canSeeFinancials, canWriteMasters } from "@/lib/roles";
+export { ROLE_LABELS, FINANCE_ROLES, canSeeFinancials, canWriteMasters, canWriteComponents } from "@/lib/roles";
 export type { Role } from "@/lib/roles";
 
 /**

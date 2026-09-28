@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters } from "@/lib/auth";
+import { getProfile } from "@/lib/auth";
 
 export type ActionResult = { ok?: true; error?: string; id?: string; irn_no?: string; status?: string };
 
-const RECEIVE = ["admin", "team_lead", "team_member"];
+const RECEIVE = ["admin", "team_lead", "team_member", "inventory_admin"];
+const MANAGE = ["admin", "team_lead", "inventory_admin"];
 
 async function receiver() {
   const p = await getProfile();
@@ -94,7 +95,7 @@ export async function submitIrn(fd: FormData): Promise<ActionResult> {
 
 async function approver() {
   const p = await getProfile();
-  return canWriteMasters(p?.role) ? p : null;
+  return p && MANAGE.includes(p.role) ? p : null;
 }
 
 export async function approveIrn(fd: FormData): Promise<ActionResult> {

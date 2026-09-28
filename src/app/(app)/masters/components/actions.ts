@@ -3,6 +3,7 @@
 import { upsertRecord, deleteRecord, type ActionResult } from "@/lib/server/crud";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
+import { canWriteComponents } from "@/lib/roles";
 
 const FIELDS = {
   component_no: "string",
@@ -20,7 +21,7 @@ const FIELDS = {
 } as const;
 
 export async function upsert(fd: FormData): Promise<ActionResult> {
-  const res = await upsertRecord("components", FIELDS, fd);
+  const res = await upsertRecord("components", FIELDS, fd, canWriteComponents);
   if (res.error) return res;
 
   // A supplier tag implies that vendor supplies this component — keep
@@ -108,5 +109,5 @@ export async function upsert(fd: FormData): Promise<ActionResult> {
   return res;
 }
 export async function remove(fd: FormData): Promise<ActionResult> {
-  return deleteRecord("components", fd);
+  return deleteRecord("components", fd, canWriteComponents);
 }

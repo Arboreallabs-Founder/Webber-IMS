@@ -19,7 +19,7 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const profile = await getProfile();
   const role = profile?.role;
-  const canReceive = role === "admin" || role === "team_lead" || role === "team_member";
+  const canReceive = role === "admin" || role === "team_lead" || role === "team_member" || role === "inventory_admin";
   const supabase = await createClient();
 
   const { data: grn } = await supabase.from("grns").select("*").eq("id", id).single();

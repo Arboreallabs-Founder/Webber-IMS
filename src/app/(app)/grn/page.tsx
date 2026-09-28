@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canSeeFinancials } from "@/lib/auth";
 import { getVendors, getComponentsSafe } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +30,7 @@ export default async function GrnPage({
 }) {
   const { tab = "all", from = "", to = "", q = "" } = await searchParams;
   const profile = await getProfile();
-  const canApprove = canWriteMasters(profile?.role);
+  const canApprove = profile?.role === "admin" || profile?.role === "team_lead" || profile?.role === "inventory_admin";
 
   return (
     <div>

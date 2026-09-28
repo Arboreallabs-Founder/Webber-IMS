@@ -7,7 +7,7 @@ import { formatNumber } from "@/lib/utils";
 
 export type ActionResult = { ok?: true; error?: string; id?: string; status?: string };
 
-const RECEIVE = ["admin", "team_lead", "team_member"]; // gate staff can receive
+const RECEIVE = ["admin", "team_lead", "team_member", "inventory_admin"]; // gate staff can receive
 
 async function receiver() {
   const p = await getProfile();

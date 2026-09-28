@@ -23,7 +23,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const profile = await getProfile();
   const finance = canSeeFinancials(profile?.role);
-  const canManage = profile?.role === "admin" || profile?.role === "team_lead";
+  const canManage = profile?.role === "admin" || profile?.role === "team_lead" || profile?.role === "inventory_admin";
   const isAdmin = profile?.role === "admin";
   const supabase = await createClient();
 
