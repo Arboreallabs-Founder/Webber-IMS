@@ -26,6 +26,7 @@ export const NAV: NavGroup[] = [
     title: "Operations",
     items: [
       { label: "Projects / Orders", href: "/projects", status: "live" },
+      { label: "Internal Consumption", href: "/internal-consumption", status: "live" },
       { label: "Requisitions", href: "/requisitions", status: "live" },
       { label: "Purchase Orders", href: "/purchase-orders", status: "live" },
       { label: "Goods Receipt", href: "/grn", status: "live" },

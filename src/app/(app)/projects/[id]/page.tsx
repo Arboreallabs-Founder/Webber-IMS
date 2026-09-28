@@ -259,8 +259,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div>
-      <Link href="/projects" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-4" /> All projects
+      <Link
+        href={project.is_internal ? "/internal-consumption" : "/projects"}
+        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" /> {project.is_internal ? "All internal consumption" : "All projects"}
       </Link>
       <PageHeader
         title={project.project_no}

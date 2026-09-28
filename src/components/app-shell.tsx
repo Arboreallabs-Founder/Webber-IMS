@@ -7,7 +7,7 @@ import {
   Menu, X, LogOut, ChevronsUpDown, Circle,
   LayoutDashboard, Database,
   FolderKanban, ClipboardList, ShoppingCart, PackageCheck, Warehouse,
-  Package, AlertTriangle, Gauge, UserCog, ScanLine, PenLine,
+  Package, AlertTriangle, Gauge, UserCog, ScanLine, PenLine, Factory,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/": LayoutDashboard,
   "/masters": Database,
   "/projects": FolderKanban,
+  "/internal-consumption": Factory,
   "/requisitions": ClipboardList,
   "/purchase-orders": ShoppingCart,
   "/grn": PackageCheck,

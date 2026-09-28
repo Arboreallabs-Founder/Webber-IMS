@@ -10,7 +10,7 @@ export default async function ProjectsPage() {
   const supabase = await createClient();
 
   const [{ data: projects }, customers] = await Promise.all([
-    supabase.from("projects").select("*").order("created_at", { ascending: false }),
+    supabase.from("projects").select("*").eq("is_internal", false).order("created_at", { ascending: false }),
     getCustomers(),
   ]);
 
