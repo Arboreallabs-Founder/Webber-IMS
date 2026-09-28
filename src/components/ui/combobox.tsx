@@ -196,6 +196,7 @@ export function Combobox({
       )}
       {open && rect && query && results.length === 0 && createPortal(
         <div
+          ref={listRef}
           style={{ position: "fixed", top: rect.top + 4, left: rect.left, width: rect.width }}
           className="z-[60] rounded-md border border-border bg-card shadow-lg"
         >
