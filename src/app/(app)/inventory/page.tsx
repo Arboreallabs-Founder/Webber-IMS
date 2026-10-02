@@ -41,7 +41,7 @@ export default async function InventoryPage() {
   const [{ data: lots }, { data: consumption }, vendorRows] = await Promise.all([
     supabase
       .from("inventory_lots")
-      .select("id, component_id, vendor_id, qty_on_hand, qty_initial, unit_cost, grn_line_id"),
+      .select("id, component_id, vendor_id, qty_on_hand, qty_initial, unit_cost, grn_line_id, source_lot_id"),
     // Which project(s) each component was actually *consumed* on — from the issue/return
     // ledger, netted, independent of the PO the stock was ordered against. Powers the
     // "WIP on Project" column in the Excel export.
@@ -50,6 +50,14 @@ export default async function InventoryPage() {
   ]);
 
   const vendorById = new Map(vendorRows.map((v) => [v.id, v]));
+
+  // A reserved part carved out of a box (no GRN line of its own) is stock the
+  // box already received: it belongs to the box's receipt group, and its
+  // qty_initial must not be counted as a second receipt. A project receipt
+  // added into a box carries its own grn_line_id and is a genuine receipt.
+  const lotById = new Map((lots ?? []).map((l) => [l.id, l]));
+  const carvedFrom = (l: { grn_line_id: string | null; source_lot_id: string | null }) =>
+    !l.grn_line_id && l.source_lot_id ? lotById.get(l.source_lot_id) ?? null : null;
 
   const grnLineIds = [...new Set((lots ?? []).map((l) => l.grn_line_id).filter((v): v is string => !!v))];
   const { data: grnLines } = grnLineIds.length
@@ -93,26 +101,29 @@ export default async function InventoryPage() {
   // (or per distinct vendor+rate for lots with no traceable PO, e.g. site purchases).
   const groupsByComponent = new Map<string, Map<string, { vendorId: string | null; rate: number | null; poLineId: string | null; qtyReceived: number; qtyBalance: number; grnNos: Set<string> }>>();
   for (const l of lots ?? []) {
-    const poLineId = l.grn_line_id ? poLineIdByGrnLine.get(l.grn_line_id) ?? null : null;
+    const box = carvedFrom(l);
+    const src = box ?? l; // receipt identity: the box's, for a carved-out part
+    const poLineId = src.grn_line_id ? poLineIdByGrnLine.get(src.grn_line_id) ?? null : null;
     const poLine = poLineId ? poLineById.get(poLineId) : null;
-    const rate = poLine?.rate ?? l.unit_cost ?? null;
-    const key = poLineId ?? `site:${l.vendor_id ?? "unknown"}:${rate ?? "0"}`;
-    const grnNo = l.grn_line_id ? grnNoById.get(grnIdByGrnLine.get(l.grn_line_id) ?? "") ?? null : null;
+    const rate = poLine?.rate ?? src.unit_cost ?? null;
+    const key = poLineId ?? `site:${src.vendor_id ?? "unknown"}:${rate ?? "0"}`;
+    const grnNo = src.grn_line_id ? grnNoById.get(grnIdByGrnLine.get(src.grn_line_id) ?? "") ?? null : null;
+    const received = box ? 0 : Number(l.qty_initial ?? 0);
 
     let compGroups = groupsByComponent.get(l.component_id);
     if (!compGroups) { compGroups = new Map(); groupsByComponent.set(l.component_id, compGroups); }
 
     const existing = compGroups.get(key);
     if (existing) {
-      existing.qtyReceived += Number(l.qty_initial ?? 0);
+      existing.qtyReceived += received;
       existing.qtyBalance += Number(l.qty_on_hand ?? 0);
       if (grnNo) existing.grnNos.add(grnNo);
     } else {
       compGroups.set(key, {
-        vendorId: l.vendor_id,
+        vendorId: src.vendor_id,
         rate,
         poLineId,
-        qtyReceived: Number(l.qty_initial ?? 0),
+        qtyReceived: received,
         qtyBalance: Number(l.qty_on_hand ?? 0),
         grnNos: new Set(grnNo ? [grnNo] : []),
       });
