@@ -20,6 +20,7 @@ type Row = {
   ordered: number;
   on_hand: number;
   consumed: number;
+  sent_to_jw: number;
   shortfall: number;
   alternatives?: Alternative[];
 };
@@ -49,6 +50,9 @@ export function ShortfallPanel({
   const [subMessage, setSubMessage] = React.useState<string | null>(null);
 
   const hasShortfall = rows.some((r) => r.shortfall > 0);
+  const hasInStockToRequisition = rows.some(
+    (r) => Math.min(Math.max(r.required - r.consumed - r.sent_to_jw, 0), r.on_hand) > 0,
+  );
 
   async function replaceWithAlternative(componentId: string, alternativeId: string) {
     if (!replaceAction || !bomId) return;
@@ -120,10 +124,10 @@ export function ShortfallPanel({
           {raiseRequisitionAction && (
             <Button
               variant="outline"
-              loading={busy === "req"} disabled={!hasShortfall}
+              loading={busy === "req"} disabled={!hasInStockToRequisition}
               onClick={raiseRequisition}
             >
-              <ClipboardList className="size-4" /> Raise requisition for shortfall
+              <ClipboardList className="size-4" /> Raise requisition
             </Button>
           )}
         </div>

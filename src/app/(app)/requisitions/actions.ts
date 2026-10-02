@@ -75,17 +75,33 @@ export async function issueRequisition(fd: FormData): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function raiseRequisitionFromShortfall(fd: FormData): Promise<ActionResult> {
+/**
+ * Raises a requisition for exactly the components a project's BOM still
+ * needs that are actually sitting in stock right now — never for a
+ * component that's short. "Still needs" nets off what's already been
+ * consumed or is currently out at job-work; the requisitioned qty is
+ * capped at on-hand, so a partially-covered line only requisitions the
+ * covered part. Re-derives everything server-side from
+ * v_project_shortfall rather than trusting client-passed numbers.
+ */
+export async function raiseRequisitionInStock(fd: FormData): Promise<ActionResult> {
   const p = await profileWith(PROCURE);
-  if (!p) return { error: "Only Admin / Team Lead / Inventory Admin can raise requisitions from shortfall." };
+  if (!p) return { error: "Only Admin / Team Lead / Inventory Admin can raise requisitions." };
   const project_id = String(fd.get("project_id"));
   const supabase = await createClient();
-  const { data: short } = await supabase
+  const { data: rows } = await supabase
     .from("v_project_shortfall")
-    .select("component_id, shortfall_qty")
-    .eq("project_id", project_id)
-    .gt("shortfall_qty", 0);
-  if (!short || short.length === 0) return { error: "No shortfall to requisition." };
+    .select("component_id, required_qty, consumed_qty, sent_to_jw_qty, on_hand")
+    .eq("project_id", project_id);
+
+  const lines = (rows ?? [])
+    .map((r) => {
+      const remaining = Math.max(Number(r.required_qty ?? 0) - Number(r.consumed_qty ?? 0) - Number(r.sent_to_jw_qty ?? 0), 0);
+      const qty = Math.min(remaining, Number(r.on_hand ?? 0));
+      return { component_id: r.component_id, qty };
+    })
+    .filter((l) => l.component_id && l.qty > 0);
+  if (lines.length === 0) return { error: "No in-stock components to requisition." };
 
   const { data: reqNo } = await supabase.rpc("next_req_no");
   const { data: req, error } = await supabase
@@ -94,14 +110,15 @@ export async function raiseRequisitionFromShortfall(fd: FormData): Promise<Actio
     .select("id")
     .single();
   if (error) return { error: error.message };
-  const lines = short.map((s) => ({
-    requisition_id: req.id,
-    component_id: s.component_id,
-    qty: s.shortfall_qty,
-    shortfall_qty: s.shortfall_qty,
-    created_by: p.id,
-  }));
-  const { error: lErr } = await supabase.from("requisition_lines").insert(lines);
+  const { error: lErr } = await supabase.from("requisition_lines").insert(
+    lines.map((l) => ({
+      requisition_id: req.id,
+      component_id: l.component_id,
+      qty: l.qty,
+      shortfall_qty: 0,
+      created_by: p.id,
+    })),
+  );
   if (lErr) return { error: lErr.message };
   revalidatePath("/requisitions");
   return { ok: true, id: req.id };

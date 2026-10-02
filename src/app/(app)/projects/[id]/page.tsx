@@ -32,7 +32,7 @@ import {
   replaceShortfallWithAlternative,
 } from "./actions";
 import { logSitePurchase } from "../../site-purchases/actions";
-import { raiseRequisitionFromShortfall } from "../../requisitions/actions";
+import { raiseRequisitionInStock } from "../../requisitions/actions";
 
 function variantText(sel: unknown): string {
   if (!sel || typeof sel !== "object") return "";
@@ -97,6 +97,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       ordered: Number(s.ordered_qty ?? 0),
       on_hand: Number(s.on_hand ?? 0),
       consumed: Number(s.consumed_qty ?? 0),
+      sent_to_jw: Number(s.sent_to_jw_qty ?? 0),
       shortfall: Number(s.shortfall_qty ?? 0),
     }))
     .sort((a, b) => b.shortfall - a.shortfall);
@@ -367,7 +368,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           rows={shortfallRows}
           canProcure={canWrite}
           replaceAction={replaceShortfallWithAlternative}
-          raiseRequisitionAction={raiseRequisitionFromShortfall}
+          raiseRequisitionAction={raiseRequisitionInStock}
         />
       </CollapsibleSection>
 
