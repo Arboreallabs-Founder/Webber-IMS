@@ -6,18 +6,21 @@ import { LockOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { unissueLot } from "../actions";
 
-export function UnissueLotButton({ lotId, componentId }: { lotId: string; componentId: string }) {
+export function UnissueLotButton({ lotId, componentId, qtyOnHand }: { lotId: string; componentId: string; qtyOnHand: number }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   async function handleClick() {
-    if (!confirm("Remove this lot's project reservation and return it to open stock?")) return;
+    // Blank = all. Cancel returns null.
+    const answer = prompt(`Unissue how many? (${qtyOnHand} reserved — leave blank for all)`, "");
+    if (answer === null) return;
     setBusy(true);
     setError(null);
     const fd = new FormData();
     fd.set("lot_id", lotId);
     fd.set("component_id", componentId);
+    fd.set("qty", answer.trim());
     const res = await unissueLot(fd);
     setBusy(false);
     if (res?.error) { setError(res.error); return; }

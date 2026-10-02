@@ -138,9 +138,19 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
   // lots created by this GRN's lines (for lot code display + sticker printing)
   const grnLineIds = (grnLines ?? []).map((l) => l.id);
   const { data: lots } = grnLineIds.length
-    ? await supabase.from("inventory_lots").select("id, lot_code, grn_line_id, status, project_id").in("grn_line_id", grnLineIds)
+    ? await supabase.from("inventory_lots").select("id, lot_code, grn_line_id, status, project_id, source_lot_id").in("grn_line_id", grnLineIds)
     : { data: [] };
   const lotByLine = new Map((lots ?? []).map((l) => [l.grn_line_id, l]));
+  // A receipt added to an existing box lands in that box — directly, or as a
+  // project-reserved part inside it. Either way the sticker is the box's.
+  const boxIds = [...new Set([
+    ...(grnLines ?? []).map((l) => l.target_lot_id),
+    ...(lots ?? []).map((l) => l.source_lot_id),
+  ].filter(Boolean))] as string[];
+  const { data: boxLots } = boxIds.length
+    ? await supabase.from("inventory_lots").select("id, lot_code").in("id", boxIds)
+    : { data: [] };
+  const boxById = new Map((boxLots ?? []).map((b) => [b.id, b]));
 
   // Build a per-component map of ALL open PO lines (for the lookup hint in manual entry)
   const projNo = new Map((projects ?? []).map((p) => [p.id, p.project_no]));
@@ -163,17 +173,19 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
 
   const postedLines = (grnLines ?? []).map((l) => {
     const lot = lotByLine.get(l.id);
+    const box = boxById.get(lot?.source_lot_id ?? l.target_lot_id ?? "");
     return {
       id: l.id,
       component_label: l.component_id ? compLabel.get(l.component_id) ?? "—" : "—",
       qty: l.qty_received,
       is_untagged: l.is_untagged,
-      lot_code: lot?.lot_code ?? null,
-      lot_id: lot?.id ?? null,
+      lot_code: box?.lot_code ?? lot?.lot_code ?? null,
+      lot_id: box?.id ?? lot?.id ?? null,
       blocked_project: lot?.status === "issued" && lot.project_id ? projNo.get(lot.project_id) ?? null : null,
     };
   });
-  const lotIds = (lots ?? []).map((l) => l.id);
+  // Reserved parts inside a box have no sticker of their own.
+  const lotIds = (lots ?? []).filter((l) => !l.source_lot_id).map((l) => l.id);
 
   return (
     <div>

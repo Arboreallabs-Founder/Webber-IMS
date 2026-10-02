@@ -30,7 +30,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
   const { data: lot } = await supabase.from("inventory_lots").select("*").eq("id", id).single();
   if (!lot) notFound();
 
-  const [{ data: comp }, { data: vendor }, { data: project }, { data: moves }, { data: projects }, { data: parentLot }, customers, { data: mpnRows }] =
+  const [{ data: comp }, { data: vendor }, { data: project }, { data: moves }, { data: projects }, { data: parentLot }, customers, { data: mpnRows }, { data: boxLot }, { data: slices }] =
     await Promise.all([
       lot.component_id ? supabase.from("components").select("component_no, name").eq("id", lot.component_id).maybeSingle() : Promise.resolve({ data: null }),
       lot.vendor_id ? supabase.from("vendors").select("name").eq("id", lot.vendor_id).maybeSingle() : Promise.resolve({ data: null }),
@@ -41,8 +41,17 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
       getCustomers(),
       // A box can genuinely hold more than one MPN mixed together.
       supabase.from("inventory_lot_mpns").select("qty, component_mpns(mpn)").eq("lot_id", id).order("qty", { ascending: false }),
+      // A reserved slice: the box it physically sits in (the sticker to scan).
+      lot.source_lot_id ? supabase.from("inventory_lots").select("id, lot_code").eq("id", lot.source_lot_id).maybeSingle() : Promise.resolve({ data: null }),
+      // A box: the parts reserved inside it.
+      supabase.from("inventory_lots").select("id, lot_code, qty_on_hand, status, project_id").eq("source_lot_id", id).gt("qty_on_hand", 0).order("created_at"),
     ]);
   const isBox = !!lot.container_no;
+  const isSlice = !!lot.source_lot_id;
+  // An emptied slice whose last movement handed its stock back to the box —
+  // "consumed" would be the wrong word for stock that was returned.
+  const returnedToOpen = isSlice && lot.status === "consumed" && moves?.[0]?.reference_type === "reservation_release";
+  const insideQty = (slices ?? []).reduce((s, l) => s + Number(l.qty_on_hand ?? 0), 0);
   const mpnBreakdown = (mpnRows ?? []).map((r) => {
     const mpnRow = r.component_mpns as unknown as { mpn: string } | { mpn: string }[] | null;
     return { label: (Array.isArray(mpnRow) ? mpnRow[0]?.mpn : mpnRow?.mpn) ?? "—", qty: Number(r.qty ?? 0) };
@@ -90,9 +99,11 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
         title={comp ? `${comp.component_no} — ${comp.name}` : "Lot"}
         description={lot.lot_code}
         action={
-          <Link href={`/inventory/stickers?lots=${lot.id}`} className={buttonVariants({ variant: "outline" })}>
-            Print sticker
-          </Link>
+          isSlice ? undefined : (
+            <Link href={`/inventory/stickers?lots=${lot.id}`} className={buttonVariants({ variant: "outline" })}>
+              Print sticker
+            </Link>
+          )
         }
       />
 
@@ -101,7 +112,8 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
           <CardContent className="grid grid-cols-2 gap-4 p-5 text-sm sm:grid-cols-3">
             <Info label="On hand" value={formatNumber(lot.qty_on_hand)} />
             <Info label="Initial" value={formatNumber(lot.qty_initial)} />
-            <Info label="Status" value={lot.status} />
+            <Info label="Status" value={returnedToOpen ? "Returned to open inventory" : lot.status} />
+            {insideQty > 0 && <Info label="Reserved inside" value={formatNumber(insideQty)} />}
             {lot.jw_stage && <Info label="Job-work stage" value={lot.jw_stage === "raw" ? "Raw (needs job work)" : "Completed"} />}
             {isBox && <Info label="Box" value={lot.container_no} />}
             <Info label="Location" value={lot.location} />
@@ -118,19 +130,55 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
           card around it links anywhere. The "View traceability" line is there
           because a QR image gives no hint that it is pressable.
         */}
-        <Card>
-          <Link
-            href={`/traceability/${lot.lot_code}`}
-            className="group flex flex-col items-center gap-2 p-5"
-          >
-            <QrCode value={lot.lot_code} size={140} />
-            <p className="font-mono text-[11px] text-muted-foreground">{lot.lot_code}</p>
-            <p className="text-sm font-medium text-primary group-hover:underline">
-              View traceability →
-            </p>
-          </Link>
-        </Card>
+        {/* A reserved slice has no sticker: it's a part of a box, found by
+            scanning that box — so no QR here, just the box to scan. */}
+        {isSlice ? (
+          <Card>
+            <CardContent className="flex h-full flex-col items-center justify-center gap-2 p-5 text-center text-sm">
+              <p className="text-muted-foreground">Reserved part of a box — no sticker of its own.</p>
+              {boxLot ? (
+                <p>
+                  Scan lot{" "}
+                  <Link href={`/inventory/lots/${boxLot.id}`} className="font-mono text-primary hover:underline">{boxLot.lot_code}</Link>
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <Link
+              href={`/traceability/${lot.lot_code}`}
+              className="group flex flex-col items-center gap-2 p-5"
+            >
+              <QrCode value={lot.lot_code} size={140} />
+              <p className="font-mono text-[11px] text-muted-foreground">{lot.lot_code}</p>
+              <p className="text-sm font-medium text-primary group-hover:underline">
+                View traceability →
+              </p>
+            </Link>
+          </Card>
+        )}
       </div>
+
+      {(slices ?? []).length > 0 && (
+        <Card className="mb-6">
+          <CardContent className="p-5">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reserved inside this box</p>
+            <div className="flex flex-wrap gap-2">
+              {(slices ?? []).map((s) => (
+                <Link key={s.id} href={`/inventory/lots/${s.id}`}>
+                  <Badge variant={s.status === "issued" ? "warning" : "secondary"}>
+                    {s.status === "issued" && s.project_id ? projNo.get(s.project_id) ?? "—" : "Open"} × {formatNumber(s.qty_on_hand)}
+                  </Badge>
+                </Link>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Scanning this box on a project&apos;s requisition uses that project&apos;s reserved part first, then the open stock.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {(mpnBreakdown.length > 0 || allMpnsBreakdown.length > 0) && (
         <Card className="mb-6">
@@ -169,10 +217,16 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
         </p>
       )}
 
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Actions</h2>
-      <Card className="mb-8"><CardContent className="p-5">
-        <LotActions lotId={id} qtyOnHand={Number(lot.qty_on_hand ?? 0)} canManage={canManage} />
-      </CardContent></Card>
+      {/* Stock-take and transfer happen on the box; a slice moves and is
+          counted with it. */}
+      {!isSlice && (
+        <>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Actions</h2>
+          <Card className="mb-8"><CardContent className="p-5">
+            <LotActions lotId={id} qtyOnHand={Number(lot.qty_on_hand ?? 0) + insideQty} canManage={canManage} />
+          </CardContent></Card>
+        </>
+      )}
 
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Ledger (immutable)</h2>
       {(moves ?? []).length === 0 ? (

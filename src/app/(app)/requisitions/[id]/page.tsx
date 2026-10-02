@@ -66,9 +66,19 @@ export default async function RequisitionDetailPage({ params }: { params: Promis
 
   const consumedLotIds = [...new Set((movements ?? []).map((m) => m.lot_id).filter(Boolean))] as string[];
   const { data: consumedLots } = consumedLotIds.length
-    ? await supabase.from("inventory_lots").select("id, lot_code").in("id", consumedLotIds)
+    ? await supabase.from("inventory_lots").select("id, lot_code, source_lot_id").in("id", consumedLotIds)
     : { data: [] };
-  const lotCode = new Map((consumedLots ?? []).map((l) => [l.id, l.lot_code]));
+  // A reserved slice has no sticker — what was actually scanned was the box
+  // it sits in, so name that box alongside it.
+  const boxIds = [...new Set((consumedLots ?? []).map((l) => l.source_lot_id).filter(Boolean))] as string[];
+  const { data: boxLots } = boxIds.length
+    ? await supabase.from("inventory_lots").select("id, lot_code").in("id", boxIds)
+    : { data: [] };
+  const boxCode = new Map((boxLots ?? []).map((b) => [b.id, b.lot_code]));
+  const lotCode = new Map((consumedLots ?? []).map((l) => [
+    l.id,
+    l.source_lot_id && boxCode.has(l.source_lot_id) ? `${l.lot_code} (in ${boxCode.get(l.source_lot_id)})` : l.lot_code,
+  ]));
   const consumedRows = (movements ?? []).map((m) => ({
     id: m.id,
     component_label: m.component_id ? compLabel.get(m.component_id) ?? "—" : "—",

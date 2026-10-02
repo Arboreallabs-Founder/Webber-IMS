@@ -34,14 +34,16 @@ export function ScanConsume({
   const [qtyNote, setQtyNote] = React.useState<string | null>(null);
   const [reason, setReason] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const [done, setDone] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
 
   async function handleDetect(code: string) {
     setPending(true);
     setError(null);
+    setDone(null);
     setLot(null);
-    const res = await resolveLot(code);
+    const res = await resolveLot(code, projectId);
     setPending(false);
     if (res.error) { setError(res.error); return; }
     const resolved = res.lot ?? null;
@@ -50,28 +52,30 @@ export function ScanConsume({
 
     if (!resolved) { setQty(0); setQtyNote(null); return; }
 
-    // Blocked stock can only be drawn against the project it's actually
-    // reserved for — mirrors consumeLot's own rule exactly: an 'issued' lot
-    // tagged elsewhere is blocked outright, an 'open'-but-tagged lot (e.g.
-    // arrived via a project-tagged PO) is only blocked when this requisition
-    // belongs to a *different* project.
-    const blockedElsewhere =
-      resolved.status === "issued"
-        ? resolved.project_no !== projectNo
-        : !!projectId && resolved.project_no !== null && resolved.project_no !== projectNo;
+    // `available_qty` is this box's stock reserved for this project plus its
+    // open stock — exactly what consume_from_lot will draw from. Stock
+    // reserved inside the box for another project is never part of it.
+    const available = resolved.available_qty;
     const required = resolved.component_id ? requiredByComponent[resolved.component_id] ?? 0 : 0;
 
-    if (blockedElsewhere) {
+    if (resolved.is_raw_job_work) {
       setQty(0);
-      setQtyNote(`Reserved for project ${resolved.project_no} — can't consume here.`);
+      setQtyNote("Raw job-work stock — send it for job work before consuming.");
+    } else if (available <= 0) {
+      setQty(0);
+      setQtyNote(
+        resolved.reserved_elsewhere.length
+          ? `Everything in this box is reserved for project ${resolved.reserved_elsewhere.map((r) => r.project_no).join(", ")} — can't consume here.`
+          : "This box is empty.",
+      );
     } else if (required <= 0) {
       setQty(0);
       setQtyNote("Nothing outstanding for this component on this requisition.");
     } else {
-      setQty(Math.min(required, resolved.qty_on_hand));
+      setQty(Math.min(required, available));
       setQtyNote(
-        resolved.qty_on_hand < required
-          ? `Only ${resolved.qty_on_hand} in this box — ${required} still needed overall.`
+        available < required
+          ? `Only ${available} available in this box — ${required} still needed overall.`
           : null,
       );
     }
@@ -90,6 +94,14 @@ export function ScanConsume({
     const res = await consumeLot(fd);
     setBusy(false);
     if (res?.error) { setError(res.error); return; }
+    const parts = [
+      res.fromReserved ? `${res.fromReserved} from reserved stock` : null,
+      res.fromOpen ? `${res.fromOpen} from open stock` : null,
+    ].filter(Boolean);
+    setDone(
+      `Consumed ${qty}${parts.length ? ` (${parts.join(" + ")})` : ""}.` +
+        (res.released ? ` ${res.released} reserved elsewhere was no longer needed and went back to open stock.` : ""),
+    );
     setLot(null);
     setQty(0);
     setQtyNote(null);
@@ -108,20 +120,32 @@ export function ScanConsume({
         <QrScanner onDetect={handleDetect} pending={pending} />
 
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {done && <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{done}</p>}
 
         {lot && (
           <div className="space-y-3 rounded-lg border border-border p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-semibold">{lot.component_label}</p>
-                <p className="font-mono text-xs text-muted-foreground">{lot.lot_code}</p>
-                {lot.project_no && lot.project_no !== projectNo && (
-                  <p className="mt-1 text-xs text-amber-600">Currently tagged to project {lot.project_no}</p>
+                <p className="font-mono text-xs text-muted-foreground">
+                  {lot.lot_code}
+                  {lot.box_lot_code !== lot.lot_code && ` (in box ${lot.box_lot_code})`}
+                </p>
+                {lot.reserved_elsewhere.length > 0 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Also in this box, reserved for other projects (not usable here):{" "}
+                    {lot.reserved_elsewhere.map((r) => `${r.project_no} × ${r.qty}`).join(", ")}
+                  </p>
                 )}
               </div>
               <div className="text-right">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">On hand</p>
-                <p className="text-xl font-semibold">{lot.qty_on_hand}</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Available</p>
+                <p className="text-xl font-semibold">{lot.available_qty}</p>
+                {projectId && lot.reserved_qty > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {lot.reserved_qty} reserved for this project + {lot.open_qty} open
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">

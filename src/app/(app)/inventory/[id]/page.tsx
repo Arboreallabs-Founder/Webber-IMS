@@ -20,7 +20,22 @@ type Lot = {
   location: string | null; status: string; unit_cost: number | null;
   created_at: string; project_id: string | null; vendor_id: string | null;
   piece_count: string | number | null; piece_length: string | number | null; piece_weight: string | number | null;
+  source_lot_id: string | null;
 };
+
+/**
+ * A reserved slice has no sticker of its own — it's found by scanning the
+ * box it sits in, so the lot code is shown with that box.
+ */
+function LotCodeCell({ lot, boxCode }: { lot: Lot; boxCode: Map<string, string> }) {
+  const box = lot.source_lot_id ? boxCode.get(lot.source_lot_id) : null;
+  return (
+    <span>
+      {lot.lot_code}
+      {box && <span className="ml-1.5 font-sans text-muted-foreground">in {box}</span>}
+    </span>
+  );
+}
 
 /** Renders qty with dimension breakdown for length/weight lots. */
 function QtyCell({ lot, qt }: { lot: Lot; qt: string }) {
@@ -131,7 +146,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
       // exists, and all three tables are `select using (true)`, so this resolves
       // for every role. Only `po_no` is pulled through — no rates, so the embed
       // carries nothing a non-finance role may not see.
-      .select("id, lot_code, qty_on_hand, qty_initial, location, status, unit_cost, created_at, project_id, vendor_id, piece_count, piece_length, piece_weight, grn_lines!inventory_lots_grn_line_id_fkey(po_lines(purchase_orders(id, po_no)))")
+      .select("id, lot_code, qty_on_hand, qty_initial, location, status, unit_cost, created_at, project_id, vendor_id, piece_count, piece_length, piece_weight, source_lot_id, grn_lines!inventory_lots_grn_line_id_fkey(po_lines(purchase_orders(id, po_no)))")
       .eq("component_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -173,6 +188,8 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
   }
 
   const lots = (allLots ?? []) as unknown as Lot[];
+  // Every slice's box is a lot of the same component, so it's already here.
+  const boxCode = new Map(lots.map((l) => [l.id, l.lot_code]));
   const openLots   = lots.filter((l) => l.status === "open");
   const issuedLots = lots.filter((l) => l.status === "issued");
 
@@ -364,7 +381,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
                 <TableBody>
                   {openLots.map((l) => (
                     <TableRow key={l.id}>
-                      <TableCell className="font-mono text-xs">{l.lot_code}</TableCell>
+                      <TableCell className="font-mono text-xs"><LotCodeCell lot={l} boxCode={boxCode} /></TableCell>
                       <TableCell><QtyCell lot={l} qt={qt} /></TableCell>
                       <TableCell className="text-muted-foreground">{l.location ?? "—"}</TableCell>
                       {finance && <TableCell className="text-muted-foreground">{formatINR(l.unit_cost)}</TableCell>}
@@ -382,7 +399,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
               {openLots.map((l) => (
                 <Link key={l.id} href={`/inventory/lots/${l.id}`} className="block">
                   <MobileRowCard
-                    title={l.lot_code}
+                    title={<LotCodeCell lot={l} boxCode={boxCode} />}
                     fields={[
                       { label: "On hand", value: <QtyCell lot={l} qt={qt} /> },
                       { label: "Location", value: l.location ?? "—" },
@@ -420,7 +437,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
                 <TableBody>
                   {issuedLots.map((l) => (
                     <TableRow key={l.id}>
-                      <TableCell className="font-mono text-xs">{l.lot_code}</TableCell>
+                      <TableCell className="font-mono text-xs"><LotCodeCell lot={l} boxCode={boxCode} /></TableCell>
                       <TableCell className="text-amber-700"><QtyCell lot={l} qt={qt} /></TableCell>
                       <TableCell>
                         {l.project_id
@@ -431,7 +448,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
                       {finance && <TableCell className="text-muted-foreground">{formatINR(l.unit_cost)}</TableCell>}
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {isAdmin && <UnissueLotButton lotId={l.id} componentId={id} />}
+                          {isAdmin && <UnissueLotButton lotId={l.id} componentId={id} qtyOnHand={Number(l.qty_on_hand)} />}
                           <Link href={`/inventory/lots/${l.id}`} aria-label="Lot detail" className={buttonVariants({ variant: "ghost", size: "icon" })}>
                             <ArrowRight className="size-4" />
                           </Link>
@@ -446,7 +463,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
               {issuedLots.map((l) => (
                 <MobileRowCard
                   key={l.id}
-                  title={l.lot_code}
+                  title={<LotCodeCell lot={l} boxCode={boxCode} />}
                   badge={l.project_id ? <Badge variant="secondary">{projNo.get(l.project_id) ?? "—"}</Badge> : undefined}
                   fields={[
                     { label: "Qty", value: <span className="text-amber-700"><QtyCell lot={l} qt={qt} /></span> },
@@ -455,7 +472,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
                   ]}
                   actions={
                     <>
-                      {isAdmin && <UnissueLotButton lotId={l.id} componentId={id} />}
+                      {isAdmin && <UnissueLotButton lotId={l.id} componentId={id} qtyOnHand={Number(l.qty_on_hand)} />}
                       <Link href={`/inventory/lots/${l.id}`} aria-label="Lot detail" className={buttonVariants({ variant: "ghost", size: "icon" })}>
                         <ArrowRight className="size-4" />
                       </Link>
@@ -468,7 +485,8 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
         )}
         {isAdmin && issuedLots.length > 0 && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Unissuing a lot removes its project reservation and returns it to open stock.
+            Unissuing a lot (all or part of it) removes its project reservation and returns it to open stock — a
+            reserved part of a box goes back into that box.
           </p>
         )}
       </section>

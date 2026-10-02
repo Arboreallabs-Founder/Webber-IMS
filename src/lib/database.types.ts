@@ -1531,6 +1531,7 @@ export type Database = {
           project_id: string | null
           qty_initial: number
           qty_on_hand: number
+          source_lot_id: string | null
           status: Database["public"]["Enums"]["lot_status"]
           unit_cost: number | null
           updated_at: string | null
@@ -1555,6 +1556,7 @@ export type Database = {
           project_id?: string | null
           qty_initial?: number
           qty_on_hand?: number
+          source_lot_id?: string | null
           status?: Database["public"]["Enums"]["lot_status"]
           unit_cost?: number | null
           updated_at?: string | null
@@ -1579,6 +1581,7 @@ export type Database = {
           project_id?: string | null
           qty_initial?: number
           qty_on_hand?: number
+          source_lot_id?: string | null
           status?: Database["public"]["Enums"]["lot_status"]
           unit_cost?: number | null
           updated_at?: string | null
@@ -5005,6 +5008,16 @@ export type Database = {
         }
         Returns: Json
       }
+      consume_from_lot: {
+        Args: {
+          p_lot: string
+          p_note?: string
+          p_project?: string
+          p_qty: number
+          p_requisition?: string
+        }
+        Returns: Json
+      }
       dispatch_job_work: {
         Args: { p_order_id: string; p_user_id: string }
         Returns: Json
@@ -5071,7 +5084,15 @@ export type Database = {
         }
         Returns: Json
       }
+      recheck_project_reservations: {
+        Args: { p_project: string }
+        Returns: Json
+      }
       recompute_po_status: { Args: { p_po: string }; Returns: undefined }
+      release_blocked_lot: {
+        Args: { p_lot: string; p_qty?: number }
+        Returns: Json
+      }
       reject_irn: {
         Args: { p_approver_id: string; p_irn_id: string; p_reason: string }
         Returns: Json

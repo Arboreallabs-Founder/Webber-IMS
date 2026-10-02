@@ -54,6 +54,22 @@ export async function blockStockForBom(fd: FormData): Promise<ActionResult> {
   }
   if (byComponent.size === 0) return { error: "BOM has no component lines to block stock for." };
 
+  // Only reserve what's still to be used: once work has started, what's
+  // already been consumed must not be reserved a second time.
+  // (issue_requisition separately nets off what's already reserved.)
+  const { data: consumed } = await supabase
+    .from("v_project_consumption")
+    .select("component_id, consumed_qty")
+    .eq("project_id", project_id);
+  for (const c of consumed ?? []) {
+    if (!c.component_id || !byComponent.has(c.component_id)) continue;
+    const left = (byComponent.get(c.component_id) ?? 0) - Number(c.consumed_qty ?? 0);
+    if (left > 0) byComponent.set(c.component_id, left);
+    else byComponent.delete(c.component_id);
+  }
+  for (const [cid, qty] of byComponent) if (qty <= 0) byComponent.delete(cid);
+  if (byComponent.size === 0) return { error: "Everything in the BOM has already been consumed — nothing left to block." };
+
   const { data: reqNo } = await supabase.rpc("next_req_no");
   const { data: req, error: reqErr } = await supabase
     .from("requisitions")
@@ -242,8 +258,16 @@ export async function approveBom(fd: FormData): Promise<ActionResult> {
     .update({ status: "approved", approved_by: p.id, approved_at: new Date().toISOString() })
     .eq("id", bom_id);
   if (error) return { error: error.message };
+
+  // The approved BOM is part of what each component "still needs" — free any
+  // stock now reserved beyond that straight away rather than at the next scan.
+  const { data: recheck, error: recheckErr } = await supabase.rpc("recheck_project_reservations", { p_project: project_id });
   revalidate(project_id);
-  return { ok: true };
+  if (recheckErr) return { ok: true, message: `BOM approved, but re-checking reserved stock failed: ${recheckErr.message}` };
+  const released = Number((recheck as { released?: number } | null)?.released ?? 0);
+  return released > 0
+    ? { ok: true, message: `BOM approved. ${released} reserved beyond what the BOM needs went back to open stock.` }
+    : { ok: true };
 }
 
 export async function unapproveBom(fd: FormData): Promise<ActionResult> {

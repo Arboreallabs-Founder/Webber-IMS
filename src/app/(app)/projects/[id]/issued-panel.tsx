@@ -64,6 +64,12 @@ export function IssuedPanel({ rows }: { rows: Row[] }) {
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <MinusCircle className="size-3.5" /> Not yet issued
                   </span>
+                ) : r.issued > r.planned ? (
+                  // Taking more than was reserved is allowed (the extra comes
+                  // from open stock), so going past the BOM is flagged here.
+                  <span className="inline-flex items-center gap-1 text-xs text-amber-700">
+                    <AlertTriangle className="size-3.5" /> Over-issued by {formatNumber(r.issued - r.planned)}
+                  </span>
                 ) : r.issued >= r.planned ? (
                   <span className="inline-flex items-center gap-1 text-xs text-green-700">
                     <CheckCircle2 className="size-3.5" /> Fully issued

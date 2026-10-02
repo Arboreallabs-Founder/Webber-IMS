@@ -47,7 +47,7 @@ export function LotActions({
           <Input name="actual_qty" type="number" step="any" min="0" placeholder={String(qtyOnHand)} />
         </div>
         <Button type="submit" variant="secondary" loading={busy === "adjust"}><ClipboardCheck className="size-4" /> Adjust</Button>
-        <span className="text-xs text-muted-foreground">Writes an adjustment movement for the difference.</span>
+        <span className="text-xs text-muted-foreground">Count the whole box, reserved parts included. Writes an adjustment movement for the difference.</span>
       </form>
 
       {/* Transfer */}

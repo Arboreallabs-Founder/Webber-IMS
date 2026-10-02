@@ -518,7 +518,12 @@ export default async function ProjectReportsPage({ params }: { params: Promise<{
                             <TableCell>{formatNumber(r.receivedTotal)}</TableCell>
                             <TableCell>{formatNumber(r.blockedMine)}</TableCell>
                             <TableCell>{formatNumber(r.openAvailable)}</TableCell>
-                            <TableCell>{formatNumber(r.consumed)}</TableCell>
+                            <TableCell>
+                              {formatNumber(r.consumed)}
+                              {r.required !== null && r.consumed > r.required && (
+                                <span className="block text-xs text-amber-700">Over-issued by {formatNumber(r.consumed - r.required)}</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <div className="flex flex-col gap-1">
                                 {r.receipts.length === 0 ? (
