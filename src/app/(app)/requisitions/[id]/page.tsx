@@ -54,6 +54,16 @@ export default async function RequisitionDetailPage({ params }: { params: Promis
     consumed: l.component_id ? consumedQtyByComponent.get(l.component_id) ?? 0 : 0,
   }));
 
+  // How much of each requested component is still outstanding on this
+  // requisition — drives the auto-filled, locked "Qty to consume" in
+  // Scan to consume, so it can never go over what's actually requested.
+  const remainingByComponent: Record<string, number> = {};
+  for (const l of lines ?? []) {
+    if (!l.component_id) continue;
+    const consumed = consumedQtyByComponent.get(l.component_id) ?? 0;
+    remainingByComponent[l.component_id] = Math.max(Number(l.qty ?? 0) - consumed, 0);
+  }
+
   const consumedLotIds = [...new Set((movements ?? []).map((m) => m.lot_id).filter(Boolean))] as string[];
   const { data: consumedLots } = consumedLotIds.length
     ? await supabase.from("inventory_lots").select("id, lot_code").in("id", consumedLotIds)
@@ -114,6 +124,7 @@ export default async function RequisitionDetailPage({ params }: { params: Promis
             projectId={req.project_id}
             projectNo={project?.data?.project_no ?? null}
             requireReason={!req.project_id}
+            requiredByComponent={remainingByComponent}
           />
         </>
       )}

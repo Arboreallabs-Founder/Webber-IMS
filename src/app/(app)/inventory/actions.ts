@@ -8,6 +8,7 @@ export type ActionResult = { ok?: true; error?: string };
 export type ResolvedLot = {
   id: string;
   lot_code: string;
+  component_id: string | null;
   component_label: string;
   qty_on_hand: number;
   location: string | null;
@@ -44,6 +45,7 @@ export async function resolveLot(lotCode: string): Promise<{ lot?: ResolvedLot; 
     lot: {
       id: lot.id,
       lot_code: lot.lot_code,
+      component_id: lot.component_id,
       component_label: comp ? `${comp.component_no} — ${comp.name}` : "—",
       qty_on_hand: Number(lot.qty_on_hand ?? 0),
       location: lot.location,

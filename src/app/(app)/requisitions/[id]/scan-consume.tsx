@@ -20,15 +20,18 @@ export function ScanConsume({
   projectId,
   projectNo,
   requireReason,
+  requiredByComponent,
 }: {
   requisitionId: string;
   projectId: string | null;
   projectNo: string | null;
   requireReason: boolean;
+  requiredByComponent: Record<string, number>;
 }) {
   const router = useRouter();
   const [lot, setLot] = React.useState<ResolvedLot | null>(null);
-  const [qty, setQty] = React.useState("");
+  const [qty, setQty] = React.useState(0);
+  const [qtyNote, setQtyNote] = React.useState<string | null>(null);
   const [reason, setReason] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
@@ -41,18 +44,46 @@ export function ScanConsume({
     const res = await resolveLot(code);
     setPending(false);
     if (res.error) { setError(res.error); return; }
-    setLot(res.lot ?? null);
-    setQty(String(res.lot?.qty_on_hand ?? ""));
+    const resolved = res.lot ?? null;
+    setLot(resolved);
     setReason("");
+
+    if (!resolved) { setQty(0); setQtyNote(null); return; }
+
+    // Blocked stock can only be drawn against the project it's actually
+    // reserved for — mirrors consumeLot's own rule exactly: an 'issued' lot
+    // tagged elsewhere is blocked outright, an 'open'-but-tagged lot (e.g.
+    // arrived via a project-tagged PO) is only blocked when this requisition
+    // belongs to a *different* project.
+    const blockedElsewhere =
+      resolved.status === "issued"
+        ? resolved.project_no !== projectNo
+        : !!projectId && resolved.project_no !== null && resolved.project_no !== projectNo;
+    const required = resolved.component_id ? requiredByComponent[resolved.component_id] ?? 0 : 0;
+
+    if (blockedElsewhere) {
+      setQty(0);
+      setQtyNote(`Reserved for project ${resolved.project_no} — can't consume here.`);
+    } else if (required <= 0) {
+      setQty(0);
+      setQtyNote("Nothing outstanding for this component on this requisition.");
+    } else {
+      setQty(Math.min(required, resolved.qty_on_hand));
+      setQtyNote(
+        resolved.qty_on_hand < required
+          ? `Only ${resolved.qty_on_hand} in this box — ${required} still needed overall.`
+          : null,
+      );
+    }
   }
 
   async function handleConsume() {
-    if (!lot) return;
+    if (!lot || qty <= 0) return;
     setBusy(true);
     setError(null);
     const fd = new FormData();
     fd.set("lot_id", lot.id);
-    fd.set("qty", qty);
+    fd.set("qty", String(qty));
     fd.set("requisition_id", requisitionId);
     if (projectId) fd.set("project_id", projectId);
     if (reason.trim()) fd.set("note", reason.trim());
@@ -60,7 +91,8 @@ export function ScanConsume({
     setBusy(false);
     if (res?.error) { setError(res.error); return; }
     setLot(null);
-    setQty("");
+    setQty(0);
+    setQtyNote(null);
     setReason("");
     router.refresh();
   }
@@ -95,7 +127,7 @@ export function ScanConsume({
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
               <div className="w-full sm:w-28">
                 <Label className="mb-1 block text-xs">Qty to consume</Label>
-                <Input type="number" step="any" min="0" max={lot.qty_on_hand} value={qty} onChange={(e) => setQty(e.target.value)} />
+                <Input type="number" value={qty} readOnly disabled className="bg-muted" />
               </div>
               {requireReason && (
                 <div className="w-full sm:min-w-[200px] sm:flex-1">
@@ -103,10 +135,11 @@ export function ScanConsume({
                   <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="R&D, sample showing…" />
                 </div>
               )}
-              <Button className="w-full sm:w-auto" loading={busy} disabled={lot.qty_on_hand <= 0} onClick={handleConsume}>
+              <Button className="w-full sm:w-auto" loading={busy} disabled={qty <= 0} onClick={handleConsume}>
                 <MinusCircle className="size-4" /> Consume
               </Button>
             </div>
+            {qtyNote && <p className="text-xs text-amber-600">{qtyNote}</p>}
           </div>
         )}
       </CardContent>

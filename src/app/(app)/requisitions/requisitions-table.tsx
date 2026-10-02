@@ -12,8 +12,8 @@ import { formatDate, formatNumber } from "@/lib/utils";
 
 const STATUS_VARIANT: Record<string, "secondary" | "warning" | "success"> = {
   open: "warning",
-  partially_ordered: "warning",
-  ordered: "secondary",
+  partially_issued: "warning",
+  issued: "secondary",
   closed: "success",
 };
 
