@@ -31,6 +31,10 @@ export function ScanConsume({
   const router = useRouter();
   const [lot, setLot] = React.useState<ResolvedLot | null>(null);
   const [qty, setQty] = React.useState(0);
+  // Locked to what's still outstanding when the part is on the requisition;
+  // typed in (up to what's in the box) when it isn't — e.g. a requisition
+  // made with "New requisition", which has no lines.
+  const [qtyLocked, setQtyLocked] = React.useState(true);
   const [qtyNote, setQtyNote] = React.useState<string | null>(null);
   const [reason, setReason] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -48,6 +52,7 @@ export function ScanConsume({
     setLot(resolved);
     setReason("");
 
+    setQtyLocked(true);
     if (!resolved) { setQty(0); setQtyNote(null); return; }
 
     // Blocked stock can only be drawn against the project it's actually
@@ -59,11 +64,16 @@ export function ScanConsume({
       resolved.status === "issued"
         ? resolved.project_no !== projectNo
         : !!projectId && resolved.project_no !== null && resolved.project_no !== projectNo;
-    const required = resolved.component_id ? requiredByComponent[resolved.component_id] ?? 0 : 0;
+    const onRequisition = !!resolved.component_id && resolved.component_id in requiredByComponent;
+    const required = onRequisition ? requiredByComponent[resolved.component_id!] : 0;
 
     if (blockedElsewhere) {
       setQty(0);
       setQtyNote(`Reserved for project ${resolved.project_no} — can't consume here.`);
+    } else if (!onRequisition) {
+      setQty(0);
+      setQtyLocked(false);
+      setQtyNote(`Not on this requisition — enter the qty to consume (up to ${resolved.qty_on_hand} in this box).`);
     } else if (required <= 0) {
       setQty(0);
       setQtyNote("Nothing outstanding for this component on this requisition.");
@@ -127,7 +137,19 @@ export function ScanConsume({
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
               <div className="w-full sm:w-28">
                 <Label className="mb-1 block text-xs">Qty to consume</Label>
-                <Input type="number" value={qty} readOnly disabled className="bg-muted" />
+                {qtyLocked ? (
+                  <Input type="number" value={qty} readOnly disabled className="bg-muted" />
+                ) : (
+                  <Input
+                    type="number"
+                    step="any"
+                    min="0"
+                    max={lot.qty_on_hand}
+                    value={qty || ""}
+                    onChange={(e) => setQty(Math.min(Math.max(Number(e.target.value) || 0, 0), lot.qty_on_hand))}
+                    autoFocus
+                  />
+                )}
               </div>
               {requireReason && (
                 <div className="w-full sm:min-w-[200px] sm:flex-1">
