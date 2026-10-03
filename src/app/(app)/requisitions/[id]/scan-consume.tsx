@@ -31,6 +31,10 @@ export function ScanConsume({
   const router = useRouter();
   const [lot, setLot] = React.useState<ResolvedLot | null>(null);
   const [qty, setQty] = React.useState(0);
+  // Locked to what's still outstanding when the part is on the requisition;
+  // typed in (up to what's in the box) when it isn't — e.g. a requisition
+  // made with "New requisition", which has no lines.
+  const [qtyLocked, setQtyLocked] = React.useState(true);
   const [qtyNote, setQtyNote] = React.useState<string | null>(null);
   const [reason, setReason] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -50,13 +54,15 @@ export function ScanConsume({
     setLot(resolved);
     setReason("");
 
+    setQtyLocked(true);
     if (!resolved) { setQty(0); setQtyNote(null); return; }
 
     // `available_qty` is this box's stock reserved for this project plus its
     // open stock — exactly what consume_from_lot will draw from. Stock
     // reserved inside the box for another project is never part of it.
     const available = resolved.available_qty;
-    const required = resolved.component_id ? requiredByComponent[resolved.component_id] ?? 0 : 0;
+    const onRequisition = !!resolved.component_id && resolved.component_id in requiredByComponent;
+    const required = onRequisition ? requiredByComponent[resolved.component_id!] : 0;
 
     if (resolved.is_raw_job_work) {
       setQty(0);
@@ -68,6 +74,10 @@ export function ScanConsume({
           ? `Everything in this box is reserved for project ${resolved.reserved_elsewhere.map((r) => r.project_no).join(", ")} — can't consume here.`
           : "This box is empty.",
       );
+    } else if (!onRequisition) {
+      setQty(0);
+      setQtyLocked(false);
+      setQtyNote(`Not on this requisition — enter the qty to consume (up to ${available} available in this box).`);
     } else if (required <= 0) {
       setQty(0);
       setQtyNote("Nothing outstanding for this component on this requisition.");
@@ -151,7 +161,19 @@ export function ScanConsume({
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
               <div className="w-full sm:w-28">
                 <Label className="mb-1 block text-xs">Qty to consume</Label>
-                <Input type="number" value={qty} readOnly disabled className="bg-muted" />
+                {qtyLocked ? (
+                  <Input type="number" value={qty} readOnly disabled className="bg-muted" />
+                ) : (
+                  <Input
+                    type="number"
+                    step="any"
+                    min="0"
+                    max={lot.available_qty}
+                    value={qty || ""}
+                    onChange={(e) => setQty(Math.min(Math.max(Number(e.target.value) || 0, 0), lot.available_qty))}
+                    autoFocus
+                  />
+                )}
               </div>
               {requireReason && (
                 <div className="w-full sm:min-w-[200px] sm:flex-1">

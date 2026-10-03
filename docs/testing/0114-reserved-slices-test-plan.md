@@ -78,7 +78,7 @@ Use a test component so real stock isn't confused with test stock.
 
 Do the sections **in order**; each one starts from where the previous one ended. Tick each row. If you see something different from "Expected", note the step number.
 
-**How requisitions get lines:** "Requisitions → New requisition" creates an empty requisition with no lines. Requisitions that have lines come from **Block stock for BOM**, or from the project page's **in-stock requisition** button. The steps below use those.
+**How requisitions get lines:** "Requisitions → New requisition" creates an empty requisition with no lines. On it, every scanned part has a **typed** qty (see B8). Requisitions that have lines come from **Block stock for BOM**, or from the project page's **in-stock requisition** button. On those, the qty is **locked** to what's still outstanding. Most steps below use requisitions with lines.
 
 ### A. Blocking part of a box
 
@@ -104,6 +104,7 @@ Do the sections **in order**; each one starts from where the previous one ended.
 | B5 | Floor | REQ-P1 → "Issued in this requisition" | Two rows: **6** from **"LOT-xxxx (in LOT-Box A)"** and **4** from **LOT-(Box A)**. The line shows 10 / 10 done. |
 | B6 | Floor | Scan Box A again on REQ-P1 | "Nothing outstanding for this component on this requisition." Consume is disabled. |
 | B7 | Lead | TEST-P1 → un-approve the BOM → change TEST-BOLT to **8** → approve | Project page → Materials issued: TEST-BOLT planned 8, issued 10, **"Over-issued by 2"**. The project's **Reports** page shows the same under WIP. |
+| B8 | Floor | Requisitions → **New requisition** for TEST-P2 (empty, no lines) → scan **Box A** | Note: **"Not on this requisition — enter the qty to consume (up to N available in this box)."** The qty box is **editable**. Typing more than N is capped at N. Don't consume yet; just check, then close it. |
 
 ### C. Auto-release (stock goes back to the box by itself)
 
@@ -225,7 +226,7 @@ It ends with `ALL PASSED` (exit code 0). If 0068/0079/0069/0084/0105 ever change
 ## 6. Known limits
 
 - **Not yet clicked through in a browser.** Only the database scenarios and the build have been checked. That's what this plan is for.
-- **Over-issue only shows when the BOM goes down after consumption** (B7). The scan screen locks the quantity to what the requisition still needs, so the floor can't take more than requested.
+- **The qty is only locked for parts that are on the requisition.** On an empty "New requisition", or for a part not on the requisition, the floor types the qty (up to what's available in the box). That's where over-issue usually comes from; it's flagged as "Over-issued by X" on the project page.
 - **Consuming without a project** (admin, with a reason) still works in the database, but the app no longer offers it: every requisition must have a project. It's covered by the automated test only.
 - An **empty** box (all of it reserved) drops out of the GRN "add to existing box" list, the same as any empty box today.
 - Reserved stock is only released automatically after a consumption or a BOM approval. Cancelling a PO or a project frees nothing until one of those happens. Use Unissue for that.
