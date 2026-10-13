@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/auth";
+import { getProfile, requirePathAccess } from "@/lib/auth";
 import { PrintButton } from "@/components/print-button";
 import { DocumentSignatureBlock } from "@/components/document-signature-block";
 import { getSigningState } from "@/lib/signatures";
@@ -43,6 +43,7 @@ function formatDateDDMMYYYY(d: string | null): string {
 }
 
 export default async function JwPrintPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePathAccess("/job-work");
   const { id } = await params;
   const profile = await getProfile();
   const supabase = await createClient();

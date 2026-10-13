@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
 import { DocumentSignatureBlock } from "@/components/document-signature-block";
 import { MrinHeader } from "@/components/mrin-header";
+import { requirePathAccess } from "@/lib/auth";
 
 const BLANK_ROWS = 8;
 
@@ -15,6 +16,7 @@ type Field = {
 };
 
 export default async function InspectionTemplatePrintPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePathAccess("/masters");
   const { id } = await params;
   const supabase = await createClient();
 

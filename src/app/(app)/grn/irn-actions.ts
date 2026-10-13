@@ -6,7 +6,7 @@ import { getProfile, canWriteMasters } from "@/lib/auth";
 
 export type ActionResult = { ok?: true; error?: string; id?: string; irn_no?: string; status?: string };
 
-const RECEIVE = ["admin", "team_lead", "team_member"];
+const RECEIVE = ["admin", "team_lead", "team_member", "floor"];
 
 async function receiver() {
   const p = await getProfile();

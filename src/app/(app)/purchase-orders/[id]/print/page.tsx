@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/auth";
+import { getProfile, canDownloadReports } from "@/lib/auth";
 import { PrintButton } from "@/components/print-button";
 import { DocumentSignatureBlock } from "@/components/document-signature-block";
 import { getSigningState } from "@/lib/signatures";
@@ -52,8 +52,10 @@ export default async function PoPrintPage({
 }) {
   const { id } = await params;
   const { unpriced: unpricedParam } = await searchParams;
-  const unpriced = unpricedParam === "1";
   const profile = await getProfile();
+  // Inventory Floor only ever gets the unpriced copy, whatever the URL says.
+  const priceLocked = !canDownloadReports(profile?.role);
+  const unpriced = priceLocked || unpricedParam === "1";
   const supabase = await createClient();
 
   const { data: po } = await supabase.from("purchase_orders").select("*").eq("id", id).single();
@@ -136,12 +138,12 @@ export default async function PoPrintPage({
           <ArrowLeft className="size-4" /> Back to PO
         </Link>
         <div className="flex items-center gap-2">
-          <Link
+          {!priceLocked && <Link
             href={unpriced ? `/purchase-orders/${id}/print` : `/purchase-orders/${id}/print?unpriced=1`}
             className="text-sm text-muted-foreground hover:text-foreground hover:underline"
           >
             {unpriced ? "View priced version" : "View unpriced version"}
-          </Link>
+          </Link>}
           {!unpriced && (
             <DownloadExcelButton
               poNo={po.po_no}

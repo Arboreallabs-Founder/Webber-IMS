@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters } from "@/lib/auth";
+import { getProfile, canWriteMasters, requirePathAccess } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { FgManager } from "./fg-manager";
 
@@ -9,6 +9,7 @@ function variantText(sel: unknown): string {
 }
 
 export default async function FinishedGoodsPage() {
+  await requirePathAccess("/finished-goods");
   const profile = await getProfile();
   const canWrite = canWriteMasters(profile?.role); // admin / team_lead
   const supabase = await createClient();

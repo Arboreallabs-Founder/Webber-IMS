@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canSeeFinancials, canWriteMasters } from "@/lib/auth";
+import { getProfile, canSeeFinancials, canWriteMasters, canDownloadReports } from "@/lib/auth";
 import { getVendors, getComponentsFull } from "@/lib/masters-data";
 import { canApprovePoLine } from "@/lib/roles";
 import { PageHeader } from "@/components/page-header";
@@ -96,17 +96,17 @@ export default async function PurchaseOrdersPage({
       ) : tab === "approvals" ? (
         <ApprovalsTab canApprove={canApprove} mySignatures={mySignatures ?? []} />
       ) : (
-        <AllPosTab finance={finance} vendors={vendors} />
+        <AllPosTab finance={finance} canDownload={canDownloadReports(profile?.role)} vendors={vendors} />
       )}
     </div>
   );
 }
 
-async function AllPosTab({ finance, vendors }: { finance: boolean; vendors: { id: string; name: string }[] }) {
+async function AllPosTab({ finance, canDownload, vendors }: { finance: boolean; canDownload: boolean; vendors: { id: string; name: string }[] }) {
   const supabase = await createClient();
   const [{ data: pos }, poRegisterRows] = await Promise.all([
     supabase.from("purchase_orders").select("*").neq("status", "superseded").order("created_at", { ascending: false }),
-    getPoRegisterRows(supabase),
+    canDownload ? getPoRegisterRows(supabase, finance) : Promise.resolve([]),
   ]);
   const vName = new Map(vendors.map((v) => [v.id, v.name]));
 
@@ -161,12 +161,12 @@ async function AllPosTab({ finance, vendors }: { finance: boolean; vendors: { id
     vendor_name: po.vendor_id ? vName.get(po.vendor_id) ?? null : null,
     po_date: po.po_date,
     status: po.status,
-    total_amount: po.total_amount,
+    total_amount: finance ? po.total_amount : null,
     waiting_on: po.status === "pending_signature" ? signerName.get(nextSignerIdByPo.get(po.id) ?? "") ?? null : null,
     over_received_lines: overReceivedByPoNo.get(po.po_no) ?? 0,
   }));
 
-  return <AllPosTable pos={rows} finance={finance} poRegisterRows={poRegisterRows} />;
+  return <AllPosTable pos={rows} finance={finance} canDownload={canDownload} poRegisterRows={poRegisterRows} />;
 }
 
 type SignRow = {

@@ -1,10 +1,11 @@
-import { getProfile, canWriteMasters, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess } from "@/lib/auth";
 import { getVendors } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
 import { upsert, remove } from "./actions";
 
 export default async function VendorsPage() {
+  await requirePathAccess("/masters");
   const profile = await getProfile();
   const rows = await getVendors();
 

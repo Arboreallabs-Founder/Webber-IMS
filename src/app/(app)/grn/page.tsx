@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, canDownloadReports } from "@/lib/auth";
 import { getVendors, getComponentsSafe } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -69,12 +69,14 @@ async function activeVendors() {
 
 async function AllGrnsTab() {
   const supabase = await createClient();
-  const finance = canSeeFinancials((await getProfile())?.role);
+  const role = (await getProfile())?.role;
+  const finance = canSeeFinancials(role);
+  const canDownload = canDownloadReports(role);
   const [{ data: grns }, vendors, { data: lines }, poRegisterRows] = await Promise.all([
     supabase.from("grns").select("*").order("received_at", { ascending: false }),
     activeVendors(),
     supabase.from("grn_lines").select("grn_id"),
-    getPoRegisterRows(supabase),
+    canDownload ? getPoRegisterRows(supabase, finance) : Promise.resolve([]),
   ]);
 
   const vName = new Map((vendors ?? []).map((v) => [v.id, v.name]));
@@ -92,7 +94,7 @@ async function AllGrnsTab() {
     received_at: g.received_at,
   }));
 
-  return <AllGrnsTable rows={rows} poRegisterRows={poRegisterRows} finance={finance} />;
+  return <AllGrnsTable rows={rows} poRegisterRows={poRegisterRows} finance={finance} canDownload={canDownload} />;
 }
 
 async function ApprovalTab({ canApprove, userId }: { canApprove: boolean; userId: string | null }) {

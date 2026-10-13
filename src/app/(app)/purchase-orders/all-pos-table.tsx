@@ -40,10 +40,12 @@ export type PoRow = {
 export function AllPosTable({
   pos,
   finance,
+  canDownload,
   poRegisterRows,
 }: {
   pos: PoRow[];
   finance: boolean;
+  canDownload: boolean;
   poRegisterRows: PoRegisterRow[];
 }) {
   const [query, setQuery] = React.useState("");
@@ -58,7 +60,7 @@ export function AllPosTable({
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <SearchInput value={query} onChange={setQuery} placeholder="Search PO no. or vendor…" />
         <p className="text-sm text-muted-foreground">{filtered.length} of {pos.length}</p>
-        <DownloadPoRegisterButton rows={poRegisterRows} finance={finance} className="ml-auto" />
+        {canDownload && <DownloadPoRegisterButton rows={poRegisterRows} finance={finance} className="ml-auto" />}
       </div>
       <Table>
         <TableHeader>

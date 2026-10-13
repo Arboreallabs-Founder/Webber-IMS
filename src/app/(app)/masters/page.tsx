@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Wrench, ClipboardCheck, Truck, Users, ShieldCheck, Hammer } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
+import { requirePathAccess } from "@/lib/auth";
 
 const MASTERS = [
   { label: "BOM Builder", href: "/masters/bom-builder", description: "Create, edit, duplicate, and delete product BOMs, variants, categories, and sub-assemblies.", icon: Hammer },
@@ -12,7 +13,8 @@ const MASTERS = [
   { label: "Approval Rights", href: "/masters/approval-rights", description: "Who must sign off POs, GRNs, and Job-Work orders.", icon: ShieldCheck },
 ];
 
-export default function MasterDataPage() {
+export default async function MasterDataPage() {
+  await requirePathAccess("/masters");
   return (
     <div>
       <PageHeader

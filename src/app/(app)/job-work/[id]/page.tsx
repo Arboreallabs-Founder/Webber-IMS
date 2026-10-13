@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Printer } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess } from "@/lib/auth";
 import { getVendors, getComponentsFull } from "@/lib/masters-data";
 import { getSigningState } from "@/lib/signatures";
 import { PageHeader } from "@/components/page-header";
@@ -18,6 +18,7 @@ const STATUS_VARIANT: Record<string, "secondary" | "warning" | "success" | "dest
 };
 
 export default async function JobWorkDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePathAccess("/job-work");
   const { id } = await params;
   const profile = await getProfile();
   const canManage = canWriteMasters(profile?.role);

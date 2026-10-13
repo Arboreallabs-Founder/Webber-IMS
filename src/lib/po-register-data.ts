@@ -34,7 +34,7 @@ async function selectInChunks<T>(
  * remaining qty, the GRN receipts against each line, and the vendor's contact
  * details. Powers the "Download PO Register" button on the PO and GRN list pages.
  */
-export async function getPoRegisterRows(supabase: SupabaseClient): Promise<PoRegisterRow[]> {
+export async function getPoRegisterRows(supabase: SupabaseClient, finance: boolean): Promise<PoRegisterRow[]> {
   const { data: pos, error: posErr } = await supabase
     .from("purchase_orders")
     .select("id, po_no, po_date, vendor_id, status")
@@ -116,8 +116,8 @@ export async function getPoRegisterRows(supabase: SupabaseClient): Promise<PoReg
       orderedQty,
       receivedQty,
       remainingQty: Math.max(orderedQty - receivedQty, 0),
-      rate: pl.rate == null ? null : Number(pl.rate),
-      amount: pl.amount == null ? null : Number(pl.amount),
+      rate: !finance || pl.rate == null ? null : Number(pl.rate),
+      amount: !finance || pl.amount == null ? null : Number(pl.amount),
       receipts: receiptsByPoLine.get(pl.id) ?? [],
       vendorName: v?.name ?? "—",
       vendorContact: v?.contact ?? null,

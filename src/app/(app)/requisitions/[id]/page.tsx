@@ -16,7 +16,7 @@ export default async function RequisitionDetailPage({ params }: { params: Promis
   const profile = await getProfile();
   const role = profile?.role;
   const canProcure = role === "admin" || role === "team_lead";
-  const canRequest = canProcure || role === "team_member";
+  const canRequest = canProcure || role === "team_member" || role === "floor";
   const supabase = await createClient();
 
   const { data: req } = await supabase.from("requisitions").select("*").eq("id", id).single();

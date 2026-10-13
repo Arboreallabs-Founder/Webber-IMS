@@ -25,10 +25,12 @@ export function AllGrnsTable({
   rows,
   poRegisterRows,
   finance,
+  canDownload,
 }: {
   rows: GrnRow[];
   poRegisterRows: PoRegisterRow[];
   finance: boolean;
+  canDownload: boolean;
 }) {
   const [query, setQuery] = React.useState("");
   const filtered = rows.filter((r) => {
@@ -47,7 +49,7 @@ export function AllGrnsTable({
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <SearchInput value={query} onChange={setQuery} placeholder="Search GRN no., vendor, challan, or invoice…" />
         <p className="text-sm text-muted-foreground">{filtered.length} of {rows.length}</p>
-        <DownloadPoRegisterButton rows={poRegisterRows} finance={finance} className="ml-auto" />
+        {canDownload && <DownloadPoRegisterButton rows={poRegisterRows} finance={finance} className="ml-auto" />}
       </div>
       <Table>
         <TableHeader>

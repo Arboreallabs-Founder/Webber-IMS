@@ -134,7 +134,7 @@ async function downloadInventoryExcel(rows: InventoryRow[]) {
   });
 }
 
-export function InventoryTable({ rows, exportRows, finance }: { rows: InventoryRow[]; exportRows: InventoryRow[]; finance: boolean }) {
+export function InventoryTable({ rows, exportRows, finance, canDownload }: { rows: InventoryRow[]; exportRows: InventoryRow[]; finance: boolean; canDownload: boolean }) {
   const [query, setQuery] = React.useState("");
   const [exporting, setExporting] = React.useState(false);
   const matches = (r: { component_no: string; name: string }) => {
@@ -153,7 +153,7 @@ export function InventoryTable({ rows, exportRows, finance }: { rows: InventoryR
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <SearchInput value={query} onChange={setQuery} placeholder="Search component no. or name…" />
         <p className="text-sm text-muted-foreground">{filtered.length} of {rows.length}</p>
-        <Button
+        {canDownload && <Button
           type="button"
           variant="outline"
           size="sm"
@@ -169,7 +169,7 @@ export function InventoryTable({ rows, exportRows, finance }: { rows: InventoryR
           }}
         >
           <FileSpreadsheet className="size-4" /> Download Excel
-        </Button>
+        </Button>}
       </div>
       <div className="hidden sm:block">
         <Table>

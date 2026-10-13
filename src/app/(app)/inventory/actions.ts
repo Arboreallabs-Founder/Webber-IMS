@@ -97,12 +97,14 @@ async function lotInfo(supabase: Awaited<ReturnType<typeof createClient>>, lotId
  */
 export async function consumeLot(fd: FormData): Promise<ActionResult> {
   const p = await getProfile();
-  if (!p || !OPERATE.includes(p.role)) return { error: "Not authorized." };
+  const requisition_id = String(fd.get("requisition_id") ?? "") || null;
+  // Inventory Floor consumes only against a requisition, never free-standing.
+  const allowed = p && (OPERATE.includes(p.role) || (p.role === "floor" && requisition_id));
+  if (!allowed) return { error: "Not authorized." };
   const lot_id = String(fd.get("lot_id"));
   const qty = Number(fd.get("qty") ?? 0) || 0;
   const project_id = String(fd.get("project_id") ?? "") || null;
   const note = String(fd.get("note") ?? "").trim() || null;
-  const requisition_id = String(fd.get("requisition_id") ?? "") || null;
   if (qty <= 0) return { error: "Enter a quantity to consume." };
 
   const supabase = await createClient();

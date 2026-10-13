@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Hammer } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters } from "@/lib/auth";
+import { getProfile, canWriteMasters, requirePathAccess } from "@/lib/auth";
 import { getVendors, getComponentsFull, getCustomers } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +17,7 @@ export default async function JobWorkPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
+  await requirePathAccess("/job-work");
   const { tab = "all" } = await searchParams;
   const profile = await getProfile();
   const canWrite = canWriteMasters(profile?.role); // admin / team_lead

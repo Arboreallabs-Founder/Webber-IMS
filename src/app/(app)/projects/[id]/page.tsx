@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess } from "@/lib/auth";
 import { getVendors, getComponentsFull, getCustomers } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,6 +43,7 @@ function variantText(sel: unknown): string {
 }
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePathAccess("/projects");
   const { id } = await params;
   const profile = await getProfile();
   const canWrite = canWriteMasters(profile?.role);

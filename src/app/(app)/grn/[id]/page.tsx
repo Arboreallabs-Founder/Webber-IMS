@@ -18,7 +18,7 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const profile = await getProfile();
   const role = profile?.role;
-  const canReceive = role === "admin" || role === "team_lead" || role === "team_member";
+  const canReceive = role === "admin" || role === "team_lead" || role === "team_member" || role === "floor";
   const supabase = await createClient();
 
   const { data: grn } = await supabase.from("grns").select("*").eq("id", id).single();
@@ -405,7 +405,7 @@ async function JobWorkGrnPage({
       id: l.id,
       component_label: compLabel(l.component_id),
       qty: Number(l.qty_received ?? 0),
-      unit_cost: l.unit_cost,
+      unit_cost: canSeeFinancials ? l.unit_cost : null,
       jw_no: l.jw_line_id ? jwNoByLine.get(l.jw_line_id) ?? null : null,
       irn_status: irn?.status ?? null,
       irn_no: irn?.irn_no ?? null,

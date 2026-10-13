@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canSeeFinancials, canDownloadReports } from "@/lib/auth";
 import { getVendors } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { formatINR } from "@/lib/utils";
@@ -8,6 +8,7 @@ import { InventoryTable, type InventoryRow, type BreakdownEntry } from "./invent
 export default async function InventoryPage() {
   const profile = await getProfile();
   const finance = canSeeFinancials(profile?.role);
+  const canDownload = canDownloadReports(profile?.role);
   const supabase = await createClient();
 
   const view = finance ? "v_component_on_hand" : "v_component_on_hand_safe";
@@ -133,8 +134,8 @@ export default async function InventoryPage() {
         email: vendor?.email ?? null,
         website: vendor?.website ?? null,
         contact: vendor?.contact ?? null,
-        rate: g.rate,
-        gstPercent: po?.gst_percent ?? null,
+        rate: finance ? g.rate : null,
+        gstPercent: finance ? po?.gst_percent ?? null : null,
         poNo: po?.po_no ?? null,
         poDate: po?.po_date ?? null,
         grnNos: [...g.grnNos].sort(),
@@ -181,7 +182,7 @@ export default async function InventoryPage() {
       {totalValue !== null && (
         <p className="mb-4 text-sm text-muted-foreground">Total stock value: <span className="font-semibold text-foreground">{formatINR(totalValue)}</span></p>
       )}
-      <InventoryTable finance={finance} rows={onHandRows} exportRows={exportRows} />
+      <InventoryTable finance={finance} canDownload={canDownload} rows={onHandRows} exportRows={canDownload ? exportRows : []} />
     </div>
   );
 }

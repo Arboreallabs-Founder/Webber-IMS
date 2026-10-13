@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters } from "@/lib/auth";
+import { getProfile, canWriteMasters, requirePathAccess } from "@/lib/auth";
 import { getCustomers } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { formatNumber, formatDate, projectLabel } from "@/lib/utils";
 import { UntaggedGrnTagger } from "./untagged-grn-tagger";
 
 export default async function ReconciliationPage() {
+  await requirePathAccess("/reconciliation");
   const profile = await getProfile();
   const canWrite = canWriteMasters(profile?.role);
   const supabase = await createClient();

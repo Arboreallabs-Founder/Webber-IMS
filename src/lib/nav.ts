@@ -1,4 +1,4 @@
-import type { Role } from "@/lib/roles";
+import { canAccessPath, type Role } from "@/lib/roles";
 
 export type NavItem = {
   label: string;
@@ -51,6 +51,6 @@ export const NAV: NavGroup[] = [
 export function visibleGroups(role: Role): NavGroup[] {
   return NAV.map((g) => ({
     ...g,
-    items: g.items.filter((i) => !i.roles || i.roles.includes(role)),
+    items: g.items.filter((i) => (!i.roles || i.roles.includes(role)) && canAccessPath(role, i.href)),
   })).filter((g) => g.items.length > 0);
 }

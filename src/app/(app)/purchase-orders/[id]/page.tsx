@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile, canSeeFinancials, canWriteMasters } from "@/lib/auth";
 import { canDeletePurchaseOrders } from "@/lib/roles";
-import { getVendors, getComponentsFull, getCustomers } from "@/lib/masters-data";
+import { getVendors, getComponents, getCustomers } from "@/lib/masters-data";
 import { getSigningState } from "@/lib/signatures";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -44,12 +44,12 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
   const [{ data: lines }, components, vendorsAll, { data: projects }, { data: vcs }, customers, { data: lastRates }, { data: mySignatures }] =
     await Promise.all([
       supabase.from("po_lines").select("*").eq("po_id", id).order("created_at"),
-      getComponentsFull(),
+      getComponents(finance),
       getVendors(),
       supabase.from("projects").select("id, project_no, customer_id").order("project_no"),
-      supabase.from("vendor_components").select("component_id, price, vendor_id"),
+      supabase.from("vendor_components").select(finance ? "component_id, price, vendor_id" : "component_id, vendor_id").returns<{ component_id: string; vendor_id: string; price?: number | null }[]>(),
       getCustomers(),
-      supabase.from("v_last_component_rate").select("component_id, rate"),
+      finance ? supabase.from("v_last_component_rate").select("component_id, rate") : Promise.resolve({ data: [] as { component_id: string | null; rate: number | null }[] }),
       profile ? supabase.from("signatures").select("id, label, method, image_data_url, is_default").eq("user_id", profile.id).order("is_default", { ascending: false }) : Promise.resolve({ data: [] }),
     ]);
   const signingState = await getSigningState("po", id, po.created_by, profile?.id ?? null);
@@ -68,7 +68,7 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
   // vendor suggestions per component (who supplies it + price)
   const suggestions: Record<string, { vendor: string; price: number | null }[]> = {};
   for (const vc of vcs ?? []) {
-    (suggestions[vc.component_id] ??= []).push({ vendor: vName.get(vc.vendor_id) ?? "—", price: vc.price });
+    (suggestions[vc.component_id] ??= []).push({ vendor: vName.get(vc.vendor_id) ?? "—", price: finance ? vc.price ?? null : null });
   }
 
   // components tagged to this PO's vendor — narrows the "Add line" picker by default
@@ -83,8 +83,8 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
     project_id: l.project_id,
     qty_ordered: l.qty_ordered,
     qty_received: l.qty_received,
-    rate: l.rate,
-    amount: l.amount,
+    rate: finance ? l.rate : null,
+    amount: finance ? l.amount : null,
     expected_date: l.expected_date,
     line_status: l.line_status,
     approval_status: l.approval_status,

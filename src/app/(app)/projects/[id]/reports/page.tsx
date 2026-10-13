@@ -9,6 +9,7 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { DownloadExcelButton } from "@/components/download-excel-button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { requirePathAccess } from "@/lib/auth";
 
 // ---- Accounts View's own simple status (kept as originally confirmed — unrelated to the richer ladder below) ----
 type AccountsStatus = "Not Ordered" | "PO Raised" | "Received" | "WIP";
@@ -70,6 +71,7 @@ function receiptText(r: Receipt) {
 }
 
 export default async function ProjectReportsPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePathAccess("/projects");
   const { id } = await params;
   const supabase = await createClient();
 

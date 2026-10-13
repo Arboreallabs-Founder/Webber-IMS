@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess } from "@/lib/auth";
 import { getCustomers } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { ProjectsList } from "./projects-list";
 import { upsert, remove } from "./actions";
 
 export default async function ProjectsPage() {
+  await requirePathAccess("/projects");
   const profile = await getProfile();
   const supabase = await createClient();
 

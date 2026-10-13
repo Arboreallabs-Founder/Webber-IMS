@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canSeeFinancials, requirePathAccess } from "@/lib/auth";
 import { getCustomers } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { formatINR, formatNumber } from "@/lib/utils";
 
 export default async function DashboardPage() {
+  await requirePathAccess("/");
   const profile = await getProfile();
   const finance = canSeeFinancials(profile?.role);
   const supabase = await createClient();

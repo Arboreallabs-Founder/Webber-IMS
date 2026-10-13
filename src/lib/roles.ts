@@ -9,13 +9,39 @@ export const ROLE_LABELS: Record<Role, string> = {
   team_lead: "Team Lead",
   team_member: "Team Member",
   viewer: "Viewer",
+  floor: "Inventory Floor",
 };
 
-/** Roles permitted to see pricing / financial columns. */
+/**
+ * Roles permitted to see pricing / financial columns.
+ * 'floor' (Inventory Floor) must NEVER be added here — a hard business rule:
+ * floor staff never see any price or cost, anywhere.
+ */
 export const FINANCE_ROLES: Role[] = ["admin", "founder", "team_lead"];
 
 export function canSeeFinancials(role: Role | undefined | null) {
   return !!role && FINANCE_ROLES.includes(role);
+}
+
+/** Excel exports, the PO register, and PO print-outs — none for Inventory Floor. */
+export function canDownloadReports(role: Role | undefined | null) {
+  return !!role && role !== "floor";
+}
+
+/**
+ * Inventory Floor sees only these areas (allowlist, so a new page stays hidden
+ * from them until deliberately added). Every other role sees everything.
+ */
+const FLOOR_PATHS = ["/requisitions", "/purchase-orders", "/grn", "/inventory", "/traceability", "/account"];
+
+export function canAccessPath(role: Role | undefined | null, path: string) {
+  if (role !== "floor") return true;
+  return FLOOR_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
+}
+
+/** Where a role lands instead of the dashboard. */
+export function homePathFor(role: Role | undefined | null) {
+  return role === "floor" ? "/grn" : "/";
 }
 
 export function canWriteMasters(role: Role | undefined | null) {

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters } from "@/lib/auth";
+import { getProfile, canWriteMasters, requirePathAccess } from "@/lib/auth";
 import { getCategories } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
@@ -8,6 +8,7 @@ import { BomList, type BomRow } from "./bom-list";
 import { CategoryManager, type CategoryRow } from "./category-manager";
 
 export default async function BomBuilderPage() {
+  await requirePathAccess("/masters");
   const profile = await getProfile();
   const canWrite = canWriteMasters(profile?.role);
   const supabase = await createClient();

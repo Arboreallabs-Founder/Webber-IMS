@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess } from "@/lib/auth";
 import { getVendors, getComponents } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
 import { upsert, remove } from "./actions";
 
 export default async function ComponentsPage() {
+  await requirePathAccess("/masters");
   const profile = await getProfile();
   const finance = canSeeFinancials(profile?.role);
   const supabase = await createClient();
