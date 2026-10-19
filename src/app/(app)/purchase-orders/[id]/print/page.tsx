@@ -94,7 +94,7 @@ export default async function PoPrintPage({
       <div className="mx-auto max-w-lg py-16 text-center">
         <p className="text-lg font-semibold text-amber-700">Cannot print this PO</p>
         <p className="mt-2 text-sm text-muted-foreground">
-          It still needs {signingState.requiredSlots.length - signingState.signed.length} signature(s) before it can be printed.
+          It still needs {signingState.remainingCount} signature(s) before it can be printed.
         </p>
         <Link href={`/purchase-orders/${id}`} className="mt-4 inline-flex items-center gap-1 text-sm text-primary hover:underline">
           <ArrowLeft className="size-4" /> Back to PO

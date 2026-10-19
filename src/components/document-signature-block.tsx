@@ -3,7 +3,7 @@ import type { SigningState } from "@/lib/signatures";
 
 const GRID_COLS: Record<number, string> = { 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" };
 
-/** The signature strip at the bottom of every printable document — one column per required slot, rendering a captured signature image once signed, the blank label until then. */
+/** The signature strip at the bottom of every printable document — one column per required slot (plus any slot signed before its approver was removed), rendering a captured signature image once signed, the blank label until then. */
 export function DocumentSignatureBlock({
   labels,
   signed,
@@ -15,7 +15,7 @@ export function DocumentSignatureBlock({
   requiredSlots: number[];
   className?: string;
 }) {
-  const slots = requiredSlots.length ? requiredSlots : [1];
+  const slots = [...new Set([...(requiredSlots.length ? requiredSlots : [1]), ...signed.map((s) => s.slot)])].sort((a, b) => a - b);
   return (
     <div className={cn("grid gap-3 border-t border-black p-6 pt-12 text-center", GRID_COLS[slots.length] ?? "grid-cols-3", className)}>
       {slots.map((slot) => {

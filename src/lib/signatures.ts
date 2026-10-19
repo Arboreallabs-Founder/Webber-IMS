@@ -15,7 +15,9 @@ export type SigningState = {
   printable: boolean;
   /** Slot 1 is missing but this document already moved on without it (grandfathered, or a PO/Job-Work already sent/dispatched before this feature existed) — the creator can still add it for the record via backfill_signature, with no status/dispatch effect. */
   isBackfill: boolean;
-  /** Every required slot in order, whose it is and whether it's done — so a UI can name who a document is waiting on instead of only counting how many are missing. */
+  /** How many required slots are still unsigned. Not `requiredSlots.length - signed.length`: a slot signed before its approver was removed is still on record but no longer required. */
+  remainingCount: number;
+  /** Every required slot in order — plus any slot signed before its approver was removed, so a past signature stays visible — whose it is and whether it's done, so a UI can name who a document is waiting on instead of only counting how many are missing. */
   slots: { slot: number; signerName: string | null; signedAt: string | null; isSigned: boolean }[];
 };
 
@@ -102,7 +104,8 @@ export async function getSigningState(
     nextSignerName: nextSignerId ? nameById.get(nextSignerId) ?? null : null,
     printable: fullySigned || grandfathered,
     isBackfill: !fullySigned && grandfathered,
-    slots: requiredSlots.map((slot) => {
+    remainingCount: requiredSlots.filter((s) => !signedSlots.has(s)).length,
+    slots: [...new Set([...requiredSlots, ...signedSlots])].sort((a, b) => a - b).map((slot) => {
       const sig = (sigsRaw ?? []).find((s) => s.slot === slot);
       // Slot 1 always belongs to the document's creator; every other slot to
       // whoever is configured at that approver_order.
