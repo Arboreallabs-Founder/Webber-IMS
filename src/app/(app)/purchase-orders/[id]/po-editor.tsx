@@ -16,6 +16,7 @@ import { formatINR, formatNumber, formatDate } from "@/lib/utils";
 import { updatePO, addPoLine, updatePoLine, removePoLine, type ActionResult } from "../actions";
 import { Combobox } from "@/components/ui/combobox";
 import { SearchInput } from "@/components/ui/search-input";
+import { DEFAULT_PO_TERMS } from "@/lib/po-terms";
 
 type Line = {
   id: string;
@@ -62,6 +63,7 @@ export function PoEditor({
     po_no: string; vendor_id: string | null; po_date: string | null; status: string;
     delivery_terms: string; payment_terms: string; freight_terms: string; gst_percent: number;
     delivery_address: string | null;
+    terms_conditions: string;
   };
   lines: Line[];
   components: ComponentOpt[];
@@ -76,6 +78,7 @@ export function PoEditor({
   canSeeFinancials: boolean;
 }) {
   const router = useRouter();
+  const termsRef = React.useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<Line | null>(null);
@@ -220,6 +223,23 @@ export function PoEditor({
               defaultValue={header.delivery_address ?? ""}
               placeholder="Leave blank to use the default factory address on the printed PO"
             />
+          </div>
+          <div className="space-y-1.5 sm:col-span-3">
+            <div className="flex items-center justify-between">
+              <Label>Terms &amp; Conditions</Label>
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline"
+                onClick={() => { if (termsRef.current) termsRef.current.value = DEFAULT_PO_TERMS; }}
+              >
+                Reset to default
+              </button>
+            </div>
+            <Textarea ref={termsRef} name="terms_conditions" rows={8} defaultValue={header.terms_conditions} />
+            <p className="text-xs text-muted-foreground">
+              One term per line — each line prints as a numbered point. Clear the box to print no terms.
+              {header.status !== "draft" && " Changing the terms on a sent PO creates a new revision that must be signed again."}
+            </p>
           </div>
           <div className="sm:col-span-3">
             <Button type="submit" variant="secondary" loading={busy}><Save className="size-4" /> Save header</Button>

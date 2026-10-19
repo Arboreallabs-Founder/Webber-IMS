@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import { canDeletePurchaseOrders, canApprovePoLine } from "@/lib/roles";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizePoTerms } from "@/lib/po-terms";
 
 export type ActionResult = {
   ok?: true;
@@ -92,7 +93,7 @@ export async function updatePO(fd: FormData): Promise<ActionResult> {
   const id = String(fd.get("id"));
   const supabase = await createClient();
 
-  const { data: po } = await supabase.from("purchase_orders").select("status, vendor_id").eq("id", id).single();
+  const { data: po } = await supabase.from("purchase_orders").select("status, vendor_id, terms_conditions").eq("id", id).single();
   if (!po) return { error: "PO not found." };
   if (po.status !== "draft" && !EDITABLE_SENT_STATUSES.includes(po.status)) return { error: LOCKED_PO_ERROR };
 
@@ -100,15 +101,23 @@ export async function updatePO(fd: FormData): Promise<ActionResult> {
   if (!po_no) return { error: "PO No. is required." };
   const vendor_id = String(fd.get("vendor_id") ?? "") || null;
 
-  // Changing the vendor on an already-sent/partial/completed PO changes
-  // who's fulfilling the order — treat it as a revision-triggering change,
-  // same as a line edit.
-  if (EDITABLE_SENT_STATUSES.includes(po.status) && vendor_id !== po.vendor_id) {
+  // A form without the field leaves the terms alone rather than wiping them.
+  const terms_conditions = fd.has("terms_conditions")
+    ? normalizePoTerms(String(fd.get("terms_conditions")))
+    : po.terms_conditions;
+  const termsChanged = terms_conditions !== normalizePoTerms(po.terms_conditions ?? "");
+
+  // Changing the vendor or the terms on an already-sent/partial/completed PO
+  // changes what was agreed with the vendor — treat it as a
+  // revision-triggering change, same as a line edit. Both in one save make a
+  // single revision.
+  const vendorChanged = vendor_id !== po.vendor_id;
+  if (EDITABLE_SENT_STATUSES.includes(po.status) && (vendorChanged || termsChanged)) {
     const { data: result, error } = await supabase.rpc("clone_po_revision", {
       p_old_po_id: id,
-      p_kind: "header_vendor",
+      p_kind: "header",
       p_line_id: null,
-      p_patch: { vendor_id },
+      p_patch: { ...(vendorChanged ? { vendor_id } : {}), ...(termsChanged ? { terms_conditions } : {}) },
       p_actor: p.id,
     });
     if (error) return { error: error.message };
@@ -128,6 +137,7 @@ export async function updatePO(fd: FormData): Promise<ActionResult> {
     freight_terms: String(fd.get("freight_terms") ?? "").trim() || "At Actual",
     delivery_address: String(fd.get("delivery_address") ?? "").replace(/\r\n/g, "\n").trim() || null,
     gst_percent: num(fd, "gst_percent") ?? 18,
+    terms_conditions,
   };
   // Status is only ever manually settable while still draft, and only into
   // draft/cancelled — "sent" now only happens via signPo (the sign-off

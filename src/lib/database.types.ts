@@ -2773,6 +2773,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           delivery_address: string | null
+          terms_conditions: string
           delivery_terms: string
           freight_terms: string
           gst_percent: number
@@ -2794,6 +2795,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           delivery_address?: string | null
+          terms_conditions?: string
           delivery_terms?: string
           freight_terms?: string
           gst_percent?: number
@@ -2815,6 +2817,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           delivery_address?: string | null
+          terms_conditions?: string
           delivery_terms?: string
           freight_terms?: string
           gst_percent?: number
