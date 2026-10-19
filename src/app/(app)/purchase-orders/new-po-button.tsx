@@ -41,6 +41,10 @@ export function NewPoButton({ vendors, defaultPoNo }: { vendors: { id: string; n
           <div className="space-y-1.5">
             <Label>PO No.</Label>
             <Input name="po_no" defaultValue={defaultPoNo} />
+            <input type="hidden" name="suggested_po_no" value={defaultPoNo} />
+            <p className="text-xs text-muted-foreground">
+              Format YWSPL/YY-YY/NNNN (exactly 4 digits). Only an Admin can change the year.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label>Vendor (optional)</Label>

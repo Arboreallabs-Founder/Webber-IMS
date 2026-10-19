@@ -37,7 +37,9 @@ function num(fd: FormData, k: string): number | null {
 }
 
 function poNoError(error: { message: string; code?: string }): string {
-  if (error.code === "23505") return "A PO with that number already exists.";
+  // The numbering trigger's own message names the clash (e.g. an older,
+  // unpadded spelling of the same number) — only the bare constraint's is generic.
+  if (error.code === "23505" && !error.message.startsWith("PO number")) return "A PO with that number already exists.";
   return error.message;
 }
 
@@ -57,22 +59,31 @@ export async function createPO(fd: FormData): Promise<ActionResult> {
   if (!p) return { error: "Only Admin / Team Lead can raise POs." };
   const supabase = await createClient();
   const manualPoNo = String(fd.get("po_no") ?? "").trim();
-  const poNo = manualPoNo || (await supabase.rpc("next_po_no")).data;
-  const { data, error } = await supabase
-    .from("purchase_orders")
-    .insert({
-      po_no: poNo,
-      vendor_id: String(fd.get("vendor_id") ?? "") || null,
-      po_date: String(fd.get("po_date") ?? "") || null,
-      status: "draft",
-      source: "system",
-      created_by: p.id,
-    })
-    .select("id")
-    .single();
-  if (error) return { error: poNoError(error) };
-  revalidatePath("/purchase-orders");
-  return { ok: true, id: data.id };
+  // The dialog pre-fills the next number; if the user kept it and someone
+  // else took it in the meantime, quietly move on to the next free one
+  // instead of failing. A number the user typed themselves is never swapped.
+  const keptSuggestion = !manualPoNo || manualPoNo === String(fd.get("suggested_po_no") ?? "").trim();
+  let poNo = manualPoNo || (await supabase.rpc("next_po_no")).data;
+  for (let attempt = 0; ; attempt++) {
+    const { data, error } = await supabase
+      .from("purchase_orders")
+      .insert({
+        po_no: poNo,
+        vendor_id: String(fd.get("vendor_id") ?? "") || null,
+        po_date: String(fd.get("po_date") ?? "") || null,
+        status: "draft",
+        source: "system",
+        created_by: p.id,
+      })
+      .select("id")
+      .single();
+    if (!error) {
+      revalidatePath("/purchase-orders");
+      return { ok: true, id: data.id };
+    }
+    if (error.code !== "23505" || !keptSuggestion || attempt >= 4) return { error: poNoError(error) };
+    poNo = (await supabase.rpc("next_po_no")).data;
+  }
 }
 
 export async function updatePO(fd: FormData): Promise<ActionResult> {
@@ -414,13 +425,20 @@ export async function raisePoFromShortfall(fd: FormData): Promise<ActionResult> 
 
   const created: { id: string; po_no: string; vendor_name: string | null }[] = [];
   for (const [vendorId, lines] of byVendor) {
-    const { data: poNo } = await supabase.rpc("next_po_no");
-    const { data: po, error } = await supabase
-      .from("purchase_orders")
-      .insert({ po_no: poNo, vendor_id: vendorId, status: "draft", source: "system", created_by: p.id })
-      .select("id")
-      .single();
-    if (error) return { error: error.message };
+    // Retried on a unique-number clash: someone else may raise a PO between
+    // reading the next number and inserting it.
+    let poNo = "";
+    let po: { id: string } | null = null;
+    for (let attempt = 0; !po; attempt++) {
+      poNo = (await supabase.rpc("next_po_no")).data ?? "";
+      const { data, error } = await supabase
+        .from("purchase_orders")
+        .insert({ po_no: poNo, vendor_id: vendorId, status: "draft", source: "system", created_by: p.id })
+        .select("id")
+        .single();
+      if (error && (error.code !== "23505" || attempt >= 4)) return { error: error.message };
+      po = data;
+    }
     const poLines = lines.map((s) => ({
       po_id: po.id,
       component_id: s.component_id,
