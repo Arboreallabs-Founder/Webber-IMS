@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { FileSpreadsheet } from "lucide-react";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { ShowMoreRows } from "@/components/ui/show-more-rows";
 import { formatDate, formatINR, projectLabel } from "@/lib/utils";
 import { LineItemEditor, type VariantParam } from "./line-item-editor";
 import { BomPanel } from "./bom-panel";
@@ -382,7 +383,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </Card>
       )}
 
-      <CollapsibleSection id="line-items" title="Line items (model + variant)" defaultOpen>
+      <ShowMoreRows id="line-items" title="Line items (model + variant)">
         <LineItemEditor
           projectId={id}
           products={products ?? []}
@@ -392,9 +393,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           addAction={addLineItem}
           removeAction={removeLineItem}
         />
-      </CollapsibleSection>
+        </ShowMoreRows>
 
-      <CollapsibleSection id="bom" title="Bill of Materials" defaultOpen>
+      <ShowMoreRows id="bom" title="Bill of Materials">
         <BomPanel
           projectId={id}
           bom={bom ?? null}
@@ -408,19 +409,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           addManualAction={addManualBomLine}
           removeLineAction={removeBomLine}
         />
-      </CollapsibleSection>
+        </ShowMoreRows>
 
       {jwStockRows.length > 0 && (
-        <CollapsibleSection
-          id="job-work"
-          title="Job work"
-          defaultOpen={jwStockRows.some((r) => r.status === "needs_job_work")}
-        >
-          <JobWorkPanel projectId={id} rows={jwStockRows} orders={jwOrderRows} canWrite={canWrite} />
-        </CollapsibleSection>
+        <ShowMoreRows id="job-work" title="Job work">
+            <JobWorkPanel projectId={id} rows={jwStockRows} orders={jwOrderRows} canWrite={canWrite} />
+          </ShowMoreRows>
       )}
 
-      <CollapsibleSection id="stock-status" title="Stock status & blocking" defaultOpen>
+      <ShowMoreRows id="stock-status" title="Stock status & blocking">
         <StockStatusPanel
           projectId={id}
           bomId={bom?.id ?? null}
@@ -430,17 +427,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           canWrite={canWrite}
           blockAction={blockStockForBom}
         />
-      </CollapsibleSection>
+        </ShowMoreRows>
 
-      <CollapsibleSection id="issued" title="Materials issued">
-        <IssuedPanel rows={issuedRows} />
-      </CollapsibleSection>
+      <ShowMoreRows id="issued" title="Materials issued"><IssuedPanel rows={issuedRows} /></ShowMoreRows>
 
-      <CollapsibleSection id="shortfall" title="Stock check & shortfall" defaultOpen={shortfallRows.some((r) => r.shortfall > 0)}>
-        <ShortfallPanel projectId={id} rows={shortfallRows} canProcure={canWrite} />
-      </CollapsibleSection>
+      <ShowMoreRows id="shortfall" title="Stock check & shortfall"><ShortfallPanel projectId={id} rows={shortfallRows} canProcure={canWrite} /></ShowMoreRows>
 
-      <CollapsibleSection id="site-purchase" title="Site purchase">
+      <CollapsibleSection id="site-purchase" title="Site purchase" hint="Click to expand">
         <SitePurchaseForm
           projectId={id}
           bomApproved={bom?.status === "approved"}
@@ -452,7 +445,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       </CollapsibleSection>
 
       {canWrite && (
-        <CollapsibleSection id="finished-goods" title="Finished goods">
+        <CollapsibleSection id="finished-goods" title="Finished goods" hint="Click to expand">
           <FinishedGoodsForm
             projectId={id}
             bomApproved={bom?.status === "approved"}

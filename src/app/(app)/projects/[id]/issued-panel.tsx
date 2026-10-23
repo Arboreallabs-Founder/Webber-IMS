@@ -1,3 +1,6 @@
+"use client";
+
+import * as React from "react";
 import { AlertTriangle, CheckCircle2, MinusCircle, PackageSearch } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -16,8 +19,11 @@ type Row = {
  * against what was planned in the BOM. Anything issued that isn't in the plan
  * (e.g. scanned in by mistake, or a genuine extra) is flagged, not hidden.
  */
-export function IssuedPanel({ rows }: { rows: Row[] }) {
-  if (rows.length === 0) {
+export function IssuedPanel({ rows: allRows }: { rows: Row[] }) {
+  const [onlyIssued, setOnlyIssued] = React.useState(false);
+  const rows = onlyIssued ? allRows.filter((r) => !r.in_plan || r.issued > 1e-6) : allRows;
+
+  if (allRows.length === 0) {
     return <p className="text-sm text-muted-foreground">Nothing issued yet. Issue components via Requisitions.</p>;
   }
 
@@ -25,6 +31,15 @@ export function IssuedPanel({ rows }: { rows: Row[] }) {
 
   return (
     <div className="space-y-4">
+      <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={onlyIssued}
+          onChange={(e) => setOnlyIssued(e.target.checked)}
+          className="size-4 rounded border-input"
+        />
+        Show only issued
+      </label>
       {unplanned.length > 0 && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
@@ -45,6 +60,9 @@ export function IssuedPanel({ rows }: { rows: Row[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
+          {rows.length === 0 && (
+            <TableRow><TableCell colSpan={4} className="py-6 text-center text-muted-foreground">Nothing issued yet.</TableCell></TableRow>
+          )}
           {rows.map((r) => (
             <TableRow key={r.component_id}>
               <TableCell className="font-medium">

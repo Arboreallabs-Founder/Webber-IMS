@@ -10,12 +10,15 @@ export function CollapsibleSection({
   title,
   defaultOpen = false,
   badge,
+  hint,
   children,
 }: {
   id?: string;
   title: string;
   defaultOpen?: boolean;
   badge?: React.ReactNode;
+  /** Shown beside the title only while the section is closed. */
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -24,6 +27,7 @@ export function CollapsibleSection({
         <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
         {badge}
+        {hint && <span className="text-xs text-muted-foreground/80 group-open:hidden">{hint}</span>}
       </summary>
       <div className="pt-4">{children}</div>
     </details>

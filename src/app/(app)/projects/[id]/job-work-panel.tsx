@@ -138,7 +138,7 @@ export function JobWorkPanel({
           </TableBody>
         </Table>
       </div>
-      <div className="space-y-3 sm:hidden">
+      <div className="space-y-3 sm:hidden" data-row-list>
         {rows.map((r) => {
           const meta = STATUS_META[r.status];
           const Icon = meta.icon;
