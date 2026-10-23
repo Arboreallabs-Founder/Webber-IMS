@@ -6,7 +6,9 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { formatINR, formatNumber } from "@/lib/utils";
+import { formatINR, formatNumber, projectLabel } from "@/lib/utils";
+import { InventorySplitCards, type ProjectValue } from "./inventory-split-cards";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function DashboardPage() {
   await requirePathAccess("/");
@@ -23,8 +25,8 @@ export default async function DashboardPage() {
       supabase.from("v_stale_stock").select("*", { count: "exact", head: true }),
       supabase.from("v_bom_variance").select("*", { count: "exact", head: true }).or("uncovered_qty.gt.0,receive_gap.gt.0"),
       supabase.from("v_project_costing").select("*"),
-      finance ? supabase.from("v_component_on_hand").select("stock_value") : Promise.resolve({ data: [] }),
-      supabase.from("projects").select("id, customer_id"),
+      finance ? shelfStockByStatus(supabase) : Promise.resolve(null),
+      supabase.from("projects").select("id, project_no, customer_id"),
       getCustomers(),
     ]);
 
@@ -34,10 +36,24 @@ export default async function DashboardPage() {
   const c = (r: { count: number | null }) => r.count ?? 0;
   const overdueLines = overdue.data ?? [];
   const overduePoCount = new Set(overdueLines.map((r) => r.po_id)).size;
-  const stockValue = finance ? (onhandRes.data ?? []).reduce((s, r) => s + Number((r as { stock_value?: number }).stock_value ?? 0), 0) : null;
+  // WIP = everything consumed into projects; same figure as the costing view's consumed_value.
+  const wipValue = finance ? (costingRes.data ?? []).reduce((s, r) => s + Number(r.consumed_value ?? 0), 0) : null;
+
+  const labelFor = (projectId: string, projectNo?: string | null) => {
+    const no = projectNo ?? projectNoById.get(projectId) ?? "—";
+    return projectLabel({ project_no: no, customer_name: custName.get(custIdByProject.get(projectId) ?? "") ?? null });
+  };
+  const projectNoById = new Map((projectsRes.data ?? []).map((p) => [p.id, p.project_no]));
+  const byValueDesc = (a: ProjectValue, b: ProjectValue) => b.value - a.value;
+  const wipByProject: ProjectValue[] = (costingRes.data ?? [])
+    .filter((r) => r.project_id && Number(r.consumed_value ?? 0) > 0.5)
+    .map((r) => ({ projectId: r.project_id!, label: labelFor(r.project_id!, r.project_no), value: Number(r.consumed_value) }))
+    .sort(byValueDesc);
+  const blockedByProject: ProjectValue[] = onhandRes
+    ? [...onhandRes.blockedByProject].filter(([, v]) => v > 0.5).map(([id, v]) => ({ projectId: id, label: labelFor(id), value: v })).sort(byValueDesc)
+    : [];
 
   const stats: { label: string; value: string; tone?: string }[] = [
-    ...(stockValue !== null ? [{ label: "Live stock value", value: formatINR(stockValue) }] : []),
     { label: "Active projects", value: formatNumber(c(activeP)) },
     { label: "Overdue POs", value: formatNumber(overduePoCount), tone: overduePoCount > 0 ? "text-red-600" : undefined },
     { label: "Untagged receipts", value: formatNumber(c(untagged)), tone: c(untagged) > 0 ? "text-amber-600" : undefined },
@@ -61,7 +77,16 @@ export default async function DashboardPage() {
     <div>
       <PageHeader title={`Welcome${profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}`} description="Live operations snapshot, straight off the ledger." />
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <section className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${onhandRes ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
+        {onhandRes && wipValue !== null && (
+          <InventorySplitCards
+            open={onhandRes.open}
+            blocked={onhandRes.blocked}
+            wip={wipValue}
+            blockedByProject={blockedByProject}
+            wipByProject={wipByProject}
+          />
+        )}
         {stats.map((s) => (
           <Card key={s.label}>
             <CardContent className="p-4">
@@ -137,4 +162,31 @@ export default async function DashboardPage() {
       </section>
     </div>
   );
+}
+
+/**
+ * Shelf stock at the PO rate, split by lot status: "open" is free stock,
+ * "issued" is blocked for a project (also totalled per project). Paged,
+ * because there are well over the 1,000 rows PostgREST returns per request
+ * and it truncates silently.
+ */
+async function shelfStockByStatus(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const [rates, lots] = await Promise.all([
+    readAll((from, to) =>
+      supabase.from("v_lot_rates").select("lot_id, status, qty_on_hand, rate")
+        .in("status", ["open", "issued"]).gt("qty_on_hand", 0).order("lot_id").range(from, to)),
+    readAll((from, to) =>
+      supabase.from("inventory_lots").select("id, project_id")
+        .eq("status", "issued").gt("qty_on_hand", 0).order("id").range(from, to)),
+  ]);
+  const projectByLot = new Map(lots.map((l) => [l.id, l.project_id]));
+  const totals = { open: 0, blocked: 0, blockedByProject: new Map<string, number>() };
+  for (const r of rates) {
+    const v = Number(r.qty_on_hand ?? 0) * Number(r.rate ?? 0);
+    if (r.status === "open") { totals.open += v; continue; }
+    totals.blocked += v;
+    const pid = r.lot_id ? projectByLot.get(r.lot_id) : null;
+    if (pid) totals.blockedByProject.set(pid, (totals.blockedByProject.get(pid) ?? 0) + v);
+  }
+  return totals;
 }
