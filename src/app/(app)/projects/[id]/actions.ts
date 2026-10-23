@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile, canWriteMasters } from "@/lib/auth";
 import { expandBomLines, type TemplateLine } from "@/lib/bom-engine";
+import { readAll } from "@/lib/server/read-all";
 
 export type ActionResult = { ok?: true; error?: string; message?: string; id?: string };
 
@@ -175,9 +176,9 @@ export async function generateBom(fd: FormData): Promise<ActionResult> {
 
   // 4) lookups: active templates + their lines + component_no map
   const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
-  const [{ data: templates }, { data: components }] = await Promise.all([
+  const [{ data: templates }, components] = await Promise.all([
     supabase.from("bom_templates").select("id, product_id").eq("is_active", true).in("product_id", productIds),
-    supabase.from("components").select("id, component_no"),
+    readAll((f, t) => supabase.from("components").select("id, component_no").order("id").range(f, t)),
   ]);
   const templateByProduct = new Map((templates ?? []).map((t) => [t.product_id, t.id]));
   const compByNo = new Map((components ?? []).map((c) => [String(c.component_no).toLowerCase(), c.id]));

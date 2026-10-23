@@ -14,6 +14,7 @@ import { PoLineApprovalActions } from "./po-line-approval-actions";
 import { AllPosTable } from "./all-pos-table";
 import { DocumentSignButton } from "@/components/document-sign-button";
 import { getPoRegisterRows } from "@/lib/po-register-data";
+import { readAll } from "@/lib/server/read-all";
 import { signPo, backfillPoSignature } from "./actions";
 
 export default async function PurchaseOrdersPage({
@@ -31,7 +32,7 @@ export default async function PurchaseOrdersPage({
   // sit in this same wave because none of them depends on another, so the tab
   // and its count cost no extra round trip — the arithmetic happens in memory
   // via computeSigningStates.
-  const [vendorsAll, { data: nextPoNo }, { count: pendingApprovalCount }, { count: pendingSignatureCount }, { data: poApproverRight }, { data: mySignatures }, { data: livePos }, { data: poRights }, { data: poSigs }] = await Promise.all([
+  const [vendorsAll, { data: nextPoNo }, { count: pendingApprovalCount }, { count: pendingSignatureCount }, { data: poApproverRight }, { data: mySignatures }, livePos, { data: poRights }, poSigs] = await Promise.all([
     getVendors(),
     supabase.rpc("peek_next_po_no"),
     supabase.from("po_lines")
@@ -41,9 +42,10 @@ export default async function PurchaseOrdersPage({
     supabase.from("purchase_orders").select("id", { count: "exact", head: true }).eq("status", "pending_signature"),
     supabase.from("approval_rights").select("user_id").eq("document_type", "po").eq("approver_order", 2).maybeSingle(),
     profile ? supabase.from("signatures").select("id, label, method, image_data_url, is_default").eq("user_id", profile.id).order("is_default", { ascending: false }) : Promise.resolve({ data: [] }),
-    supabase.from("purchase_orders").select("id, po_no, vendor_id, status, created_by, created_at").is("superseded_by", null),
+    readAll((f, t) => supabase.from("purchase_orders").select("id, po_no, vendor_id, status, created_by, created_at").is("superseded_by", null).order("id").range(f, t)),
     supabase.from("approval_rights").select("approver_order, user_id").eq("document_type", "po"),
-    supabase.from("document_signatures").select("document_id, slot").eq("document_type", "po"),
+    // Over 1,000 PO signatures exist; a single read silently dropped the rest.
+    readAll((f, t) => supabase.from("document_signatures").select("document_id, slot").eq("document_type", "po").order("document_id").order("slot").range(f, t)),
   ]);
   const vendors = vendorsAll.filter((v) => v.is_active);
   const canApprove = canApprovePoLine(profile?.role, profile?.id, poApproverRight?.user_id ?? null);
@@ -104,8 +106,8 @@ export default async function PurchaseOrdersPage({
 
 async function AllPosTab({ finance, canDownload, vendors }: { finance: boolean; canDownload: boolean; vendors: { id: string; name: string }[] }) {
   const supabase = await createClient();
-  const [{ data: pos }, poRegisterRows] = await Promise.all([
-    supabase.from("purchase_orders").select("*").neq("status", "superseded").order("created_at", { ascending: false }),
+  const [pos, poRegisterRows] = await Promise.all([
+    readAll((f, t) => supabase.from("purchase_orders").select("*").neq("status", "superseded").order("created_at", { ascending: false }).order("id").range(f, t)),
     canDownload ? getPoRegisterRows(supabase, finance) : Promise.resolve([]),
   ]);
   const vName = new Map(vendors.map((v) => [v.id, v.name]));

@@ -15,6 +15,7 @@ import { NewGrnButton } from "./new-grn-button";
 import { IrnApprovalActions } from "./irn-approval-actions";
 import { AllGrnsTable, type GrnRow } from "./all-grns-table";
 import { getPoRegisterRows } from "@/lib/po-register-data";
+import { readAll } from "@/lib/server/read-all";
 import { signGrn } from "./actions";
 
 const TABS = [
@@ -72,10 +73,10 @@ async function AllGrnsTab() {
   const role = (await getProfile())?.role;
   const finance = canSeeFinancials(role);
   const canDownload = canDownloadReports(role);
-  const [{ data: grns }, vendors, { data: lines }, poRegisterRows] = await Promise.all([
-    supabase.from("grns").select("*").order("received_at", { ascending: false }),
+  const [grns, vendors, lines, poRegisterRows] = await Promise.all([
+    readAll((f, t) => supabase.from("grns").select("*").order("received_at", { ascending: false }).order("id").range(f, t)),
     activeVendors(),
-    supabase.from("grn_lines").select("grn_id"),
+    readAll((f, t) => supabase.from("grn_lines").select("id, grn_id").order("id").range(f, t)),
     canDownload ? getPoRegisterRows(supabase, finance) : Promise.resolve([]),
   ]);
 

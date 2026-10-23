@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { formatNumber, formatDate, projectLabel } from "@/lib/utils";
 import { UntaggedGrnTagger } from "./untagged-grn-tagger";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function ReconciliationPage() {
   await requirePathAccess("/reconciliation");
@@ -22,7 +23,7 @@ export default async function ReconciliationPage() {
     { data: stale },
     { data: overdue },
     { data: projects },
-    { data: components },
+    components,
     customers,
   ] = await Promise.all([
     supabase.from("v_bom_variance").select("*").or("uncovered_qty.gt.0,receive_gap.gt.0"),
@@ -31,7 +32,7 @@ export default async function ReconciliationPage() {
     supabase.from("v_stale_stock").select("*").order("age_days", { ascending: false }),
     supabase.from("v_po_overdue").select("*").order("days_overdue", { ascending: false }),
     supabase.from("projects").select("id, project_no, customer_id"),
-    supabase.from("components").select("id, component_no, name"),
+    readAll((f, t) => supabase.from("components").select("id, component_no, name").order("id").range(f, t)),
     getCustomers(),
   ]);
 

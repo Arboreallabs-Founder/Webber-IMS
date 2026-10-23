@@ -10,6 +10,7 @@ import { MobileRowCard } from "@/components/ui/mobile-row-card";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { RequisitionEditor } from "./requisition-editor";
 import { ScanConsume } from "./scan-consume";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function RequisitionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,9 +23,9 @@ export default async function RequisitionDetailPage({ params }: { params: Promis
   const { data: req } = await supabase.from("requisitions").select("*").eq("id", id).single();
   if (!req) notFound();
 
-  const [{ data: lines }, { data: components }, project, { data: movements }] = await Promise.all([
+  const [{ data: lines }, components, project, { data: movements }] = await Promise.all([
     supabase.from("requisition_lines").select("*").eq("requisition_id", id).order("created_at"),
-    supabase.from("components").select("id, component_no, name").order("component_no"),
+    readAll((f, t) => supabase.from("components").select("id, component_no, name").order("component_no").order("id").range(f, t)),
     req.project_id
       ? supabase.from("projects").select("project_no").eq("id", req.project_id).maybeSingle()
       : Promise.resolve({ data: null }),

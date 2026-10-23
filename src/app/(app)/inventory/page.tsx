@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getProfile, canSeeFinancials, canDownloadReports } from "@/lib/auth";
 import { getVendors } from "@/lib/masters-data";
+import { readAll } from "@/lib/server/read-all";
 import { PageHeader } from "@/components/page-header";
 import { formatINR } from "@/lib/utils";
 import { InventoryTable, type InventoryRow, type BreakdownEntry } from "./inventory-table";
@@ -12,7 +13,7 @@ export default async function InventoryPage() {
   const supabase = await createClient();
 
   const view = finance ? "v_component_on_hand" : "v_component_on_hand_safe";
-  const { data } = await supabase.from(view as "v_component_on_hand").select("*");
+  const data = await readAll((f, t) => supabase.from(view as "v_component_on_hand").select("*").order("component_id").range(f, t));
   const allComponents = (data ?? []).map((r) => ({
     ...r,
     qty_on_hand: Number(r.qty_on_hand ?? 0),
@@ -27,68 +28,44 @@ export default async function InventoryPage() {
   // Consumed lots are included on purpose: a fully-consumed component must still show its
   // real received qty, vendor, PO and GRN in the export (Balance just reads 0).
   //
-  // These reads used to run one after another, which cost nine serial round trips to
-  // Postgres. They are issued here in dependency tiers instead: everything within a tier
-  // is independent, so each tier is one round trip and the page waits five times, not
-  // nine. Vendors come from the shared cached loader (`vendors_sel` is `using (true)`,
-  // so it returns exactly what a per-request query would) and cost nothing at all.
-  //
-  // Neither read filters by `componentIds`. Doing so put all 512 ids in the query
-  // string, which built a ~20 KB URL and made PostgREST reject the request for
-  // exceeding the header limit — silently, since the failure surfaces only as a null
-  // `data`, which is why the export's vendor/PO/GRN/rate columns came out blank. The
-  // filter bought nothing anyway: both tables are keyed to components, so the maps
-  // built below are only ever read for a component already on the page.
-  const [{ data: lots }, { data: consumption }, vendorRows] = await Promise.all([
-    supabase
-      .from("inventory_lots")
-      .select("id, component_id, vendor_id, qty_on_hand, qty_initial, unit_cost, grn_line_id"),
+  // Every table is read whole, in 1,000-row pages, in one parallel wave. There are
+  // well over 1,000 lots and PO lines, and PostgREST truncates silently at 1,000 —
+  // which made the export drop half the lots. Filtering by id lists instead builds
+  // URLs past the header limit, which fails just as silently. Skipped entirely for
+  // roles that can't download the export.
+  const empty = Promise.resolve([] as never[]);
+  const [lots, lotRates, receipts, consumption, grnLines, grns, poLines, purchaseOrders, projects, vendorRows] = await Promise.all([
+    canDownload ? readAll((f, t) => supabase.from("inventory_lots").select("id, component_id, vendor_id, qty_on_hand, qty_initial, grn_line_id").order("id").range(f, t)) : empty,
+    canDownload ? readAll((f, t) => supabase.from("v_lot_rates").select("lot_id, rate").order("lot_id").range(f, t)) : empty,
+    // Received qty per lot comes from the receipt ledger, not qty_initial: a box topped up
+    // by a later GRN gets a receipt movement but its qty_initial is never raised.
+    canDownload ? readAll((f, t) => supabase.from("stock_movements").select("id, lot_id, qty").eq("movement_type", "receipt").order("id").range(f, t)) : empty,
     // Which project(s) each component was actually *consumed* on — from the issue/return
     // ledger, netted, independent of the PO the stock was ordered against. Powers the
     // "WIP on Project" column in the Excel export.
-    supabase.from("v_project_consumption").select("project_id, component_id, consumed_qty"),
+    canDownload ? readAll((f, t) => supabase.from("v_project_consumption").select("project_id, component_id, consumed_qty").order("project_id").order("component_id").range(f, t)) : empty,
+    canDownload ? readAll((f, t) => supabase.from("grn_lines").select("id, po_line_id, grn_id").order("id").range(f, t)) : empty,
+    canDownload ? readAll((f, t) => supabase.from("grns").select("id, grn_no").order("id").range(f, t)) : empty,
+    canDownload ? readAll((f, t) => supabase.from("po_lines").select("id, project_id, po_id").order("id").range(f, t)) : empty,
+    canDownload ? readAll((f, t) => supabase.from("purchase_orders").select("id, po_no, po_date, gst_percent").order("id").range(f, t)) : empty,
+    canDownload ? readAll((f, t) => supabase.from("projects").select("id, project_no").order("id").range(f, t)) : empty,
     getVendors(),
   ]);
 
   const vendorById = new Map(vendorRows.map((v) => [v.id, v]));
-
-  const grnLineIds = [...new Set((lots ?? []).map((l) => l.grn_line_id).filter((v): v is string => !!v))];
-  const { data: grnLines } = grnLineIds.length
-    ? await supabase.from("grn_lines").select("id, po_line_id, grn_id").in("id", grnLineIds)
-    : { data: [] };
-  const poLineIdByGrnLine = new Map((grnLines ?? []).map((g) => [g.id, g.po_line_id]));
-  const grnIdByGrnLine = new Map((grnLines ?? []).map((g) => [g.id, g.grn_id]));
-
-  const grnIds = [...new Set((grnLines ?? []).map((g) => g.grn_id).filter((v): v is string => !!v))];
-  const poLineIds = [...new Set((grnLines ?? []).map((g) => g.po_line_id).filter((v): v is string => !!v))];
-  const [{ data: grns }, { data: poLines }] = await Promise.all([
-    grnIds.length
-      ? supabase.from("grns").select("id, grn_no").in("id", grnIds)
-      : Promise.resolve({ data: [] }),
-    poLineIds.length
-      ? supabase.from("po_lines").select("id, rate, project_id, po_id").in("id", poLineIds)
-      : Promise.resolve({ data: [] }),
-  ]);
-  const grnNoById = new Map((grns ?? []).map((g) => [g.id, g.grn_no]));
-  const poLineById = new Map((poLines ?? []).map((p) => [p.id, p]));
-
-  const poIds = [...new Set((poLines ?? []).map((p) => p.po_id).filter((v): v is string => !!v))];
-  const projectIds = [
-    ...new Set([
-      ...(poLines ?? []).map((p) => p.project_id).filter((v): v is string => !!v),
-      ...(consumption ?? []).map((c) => c.project_id).filter((v): v is string => !!v),
-    ]),
-  ];
-  const [{ data: purchaseOrders }, { data: projects }] = await Promise.all([
-    poIds.length
-      ? supabase.from("purchase_orders").select("id, po_no, po_date, gst_percent").in("id", poIds)
-      : Promise.resolve({ data: [] }),
-    projectIds.length
-      ? supabase.from("projects").select("id, project_no").in("id", projectIds)
-      : Promise.resolve({ data: [] }),
-  ]);
-  const poById = new Map((purchaseOrders ?? []).map((p) => [p.id, p]));
-  const projectNoById = new Map((projects ?? []).map((p) => [p.id, p.project_no]));
+  // Approved PO rate per lot (legacy typed cost only where there's no approved PO line).
+  const rateByLot = new Map(lotRates.map((r) => [r.lot_id, r.rate]));
+  const receivedByLot = new Map<string, number>();
+  for (const m of receipts) if (m.lot_id) receivedByLot.set(m.lot_id, (receivedByLot.get(m.lot_id) ?? 0) + Number(m.qty ?? 0));
+  // A lot with no receipt got its stock by transfer (an old-style split off another lot, whose
+  // own receipt already counts it) — so it received nothing; qty_initial would double count.
+  const receivedQty = (l: { id: string }) => receivedByLot.get(l.id) ?? 0;
+  const poLineIdByGrnLine = new Map(grnLines.map((g) => [g.id, g.po_line_id]));
+  const grnIdByGrnLine = new Map(grnLines.map((g) => [g.id, g.grn_id]));
+  const grnNoById = new Map(grns.map((g) => [g.id, g.grn_no]));
+  const poLineById = new Map(poLines.map((p) => [p.id, p]));
+  const poById = new Map(purchaseOrders.map((p) => [p.id, p]));
+  const projectNoById = new Map(projects.map((p) => [p.id, p.project_no]));
 
   // Group lots per component into receipt-groups: one entry per distinct po_line
   // (or per distinct vendor+rate for lots with no traceable PO, e.g. site purchases).
@@ -96,7 +73,7 @@ export default async function InventoryPage() {
   for (const l of lots ?? []) {
     const poLineId = l.grn_line_id ? poLineIdByGrnLine.get(l.grn_line_id) ?? null : null;
     const poLine = poLineId ? poLineById.get(poLineId) : null;
-    const rate = poLine?.rate ?? l.unit_cost ?? null;
+    const rate = rateByLot.get(l.id) ?? null;
     const key = poLineId ?? `site:${l.vendor_id ?? "unknown"}:${rate ?? "0"}`;
     const grnNo = l.grn_line_id ? grnNoById.get(grnIdByGrnLine.get(l.grn_line_id) ?? "") ?? null : null;
 
@@ -105,7 +82,7 @@ export default async function InventoryPage() {
 
     const existing = compGroups.get(key);
     if (existing) {
-      existing.qtyReceived += Number(l.qty_initial ?? 0);
+      existing.qtyReceived += receivedQty(l);
       existing.qtyBalance += Number(l.qty_on_hand ?? 0);
       if (grnNo) existing.grnNos.add(grnNo);
     } else {
@@ -113,7 +90,7 @@ export default async function InventoryPage() {
         vendorId: l.vendor_id,
         rate,
         poLineId,
-        qtyReceived: Number(l.qty_initial ?? 0),
+        qtyReceived: receivedQty(l),
         qtyBalance: Number(l.qty_on_hand ?? 0),
         grnNos: new Set(grnNo ? [grnNo] : []),
       });

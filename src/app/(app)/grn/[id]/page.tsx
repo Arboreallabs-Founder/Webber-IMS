@@ -13,6 +13,7 @@ import { GrnReceiver } from "./grn-receiver";
 import { JwGrnReceiver, type OpenJwLine, type PostedJwLine, type PendingJwIrn, type TemplateField } from "./jw-grn-receiver";
 import { submitIrn } from "../irn-actions";
 import { signGrn } from "../actions";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function GrnDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -42,10 +43,10 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
     );
   }
 
-  const [{ data: grnLines }, { data: components }, { data: projects }, vendor, { data: allOpenPoLines }, { data: vendorComps }] =
+  const [{ data: grnLines }, components, { data: projects }, vendor, { data: allOpenPoLines }, { data: vendorComps }] =
     await Promise.all([
       supabase.from("grn_lines").select("*").eq("grn_id", id).order("created_at"),
-      supabase.from("components").select("id, component_no, name, quantity_type, tracking_mode, inspection_template_id").order("component_no"),
+      readAll((f, t) => supabase.from("components").select("id, component_no, name, quantity_type, tracking_mode, inspection_template_id").order("component_no").order("id").range(f, t)),
       supabase.from("projects").select("id, project_no").order("project_no"),
       grn.vendor_id ? supabase.from("vendors").select("name").eq("id", grn.vendor_id).maybeSingle() : Promise.resolve({ data: null }),
       // All open PO lines system-wide for component lookup

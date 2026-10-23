@@ -17,6 +17,7 @@ import {
 } from "../actions";
 import { BuilderProductHeader } from "./product-header";
 import { BuilderChecklist } from "./checklist";
+import { readAll } from "@/lib/server/read-all";
 
 type LineRow = {
   id: string;
@@ -92,9 +93,9 @@ export default async function BomBuilderDetailPage({ params }: { params: Promise
   const { data: template } = await supabase.from("bom_templates").select("*").eq("id", id).single();
   if (!template) notFound();
 
-  const [{ data: lines }, { data: components }] = await Promise.all([
+  const [{ data: lines }, components] = await Promise.all([
     supabase.from("bom_template_lines").select("*").eq("bom_template_id", id).order("sort_order", { nullsFirst: false }),
-    supabase.from("components").select("id, component_no, name").order("component_no"),
+    readAll((f, t) => supabase.from("components").select("id, component_no, name").order("component_no").order("id").range(f, t)),
   ]);
 
   const compById = new Map((components ?? []).map((c) => [c.id, `${c.component_no} — ${c.name}`]));

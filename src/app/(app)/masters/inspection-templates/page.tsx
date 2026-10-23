@@ -3,15 +3,16 @@ import { getProfile, canWriteMasters, requirePathAccess } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
 import { upsert, remove } from "./actions";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function InspectionTemplatesPage() {
   await requirePathAccess("/masters");
   const profile = await getProfile();
   const supabase = await createClient();
-  const [{ data: templates }, { data: fields }, { data: components }] = await Promise.all([
+  const [{ data: templates }, { data: fields }, components] = await Promise.all([
     supabase.from("inspection_templates").select("*").order("created_at", { ascending: false }),
     supabase.from("inspection_template_fields").select("template_id").eq("is_active", true),
-    supabase.from("components").select("id, inspection_template_id"),
+    readAll((f, t) => supabase.from("components").select("id, inspection_template_id").order("id").range(f, t)),
   ]);
 
   const fieldCounts = new Map<string, number>();

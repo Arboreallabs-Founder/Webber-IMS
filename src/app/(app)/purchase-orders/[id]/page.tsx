@@ -15,6 +15,7 @@ import { DeletePoButton } from "./delete-po-button";
 import { signPo, backfillPoSignature } from "../actions";
 import { PrintPoButton } from "./print-po-button";
 import { projectLabel } from "@/lib/utils";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function PoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -41,15 +42,15 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
     currentRevisionId = (lineage ?? []).find((r) => r.superseded_by === null)?.id ?? null;
   }
 
-  const [{ data: lines }, components, vendorsAll, { data: projects }, { data: vcs }, customers, { data: lastRates }, { data: mySignatures }] =
+  const [{ data: lines }, components, vendorsAll, { data: projects }, vcs, customers, lastRates, { data: mySignatures }] =
     await Promise.all([
       supabase.from("po_lines").select("*").eq("po_id", id).order("created_at"),
       getComponents(finance),
       getVendors(),
       supabase.from("projects").select("id, project_no, customer_id").order("project_no"),
-      supabase.from("vendor_components").select(finance ? "component_id, price, vendor_id" : "component_id, vendor_id").returns<{ component_id: string; vendor_id: string; price?: number | null }[]>(),
+      readAll((f, t) => supabase.from("vendor_components").select(finance ? "component_id, price, vendor_id" : "component_id, vendor_id").order("vendor_id").order("component_id").range(f, t).returns<{ component_id: string; vendor_id: string; price?: number | null }[]>()),
       getCustomers(),
-      finance ? supabase.from("v_last_component_rate").select("component_id, rate") : Promise.resolve({ data: [] as { component_id: string | null; rate: number | null }[] }),
+      finance ? readAll((f, t) => supabase.from("v_last_component_rate").select("component_id, rate").order("component_id").range(f, t)) : Promise.resolve([] as { component_id: string | null; rate: number | null }[]),
       profile ? supabase.from("signatures").select("id, label, method, image_data_url, is_default").eq("user_id", profile.id).order("is_default", { ascending: false }) : Promise.resolve({ data: [] }),
     ]);
   const signingState = await getSigningState("po", id, po.created_by, profile?.id ?? null);

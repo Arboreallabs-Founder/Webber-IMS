@@ -10,6 +10,7 @@ import { DownloadExcelButton } from "@/components/download-excel-button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { requirePathAccess } from "@/lib/auth";
+import { readAll, readAllIn } from "@/lib/server/read-all";
 
 // ---- Accounts View's own simple status (kept as originally confirmed — unrelated to the richer ladder below) ----
 type AccountsStatus = "Not Ordered" | "PO Raised" | "Received" | "WIP";
@@ -81,69 +82,64 @@ export default async function ProjectReportsPage({ params }: { params: Promise<{
   ]);
   if (!project) notFound();
 
-  const [{ data: customer }, { data: bomLines }, { data: shortfall }, { data: poLines }] = await Promise.all([
+  // Every multi-row read below is paged / batched (readAll, readAllIn): these feed the
+  // Excel exports, which must never be silently cut off at the 1,000-row API cap.
+  const [{ data: customer }, bomLines, shortfall, poLines] = await Promise.all([
     project.customer_id ? supabase.from("customers").select("name").eq("id", project.customer_id).single() : Promise.resolve({ data: null }),
-    bom ? supabase.from("bom_lines").select("id, component_id, required_qty, source, note").eq("bom_id", bom.id) : Promise.resolve({ data: [] }),
-    supabase.from("v_project_shortfall")
+    bom ? readAll((f, t) => supabase.from("bom_lines").select("id, component_id, required_qty, source, note").eq("bom_id", bom.id).order("id").range(f, t)) : Promise.resolve([]),
+    readAll((f, t) => supabase.from("v_project_shortfall")
       .select("component_id, required_qty, ordered_qty, on_hand, consumed_qty, sent_to_jw_qty, shortfall_qty")
-      .eq("project_id", id),
+      .eq("project_id", id).order("component_id").range(f, t)),
     // Cancelled lines (e.g. superseded by a PO revision) never represent real
     // spend or receipts — excluded here so they don't inflate PO Value/Qty
     // totals or falsely imply "PO Raised" for the accounts/status exports.
-    supabase.from("po_lines")
+    readAll((f, t) => supabase.from("po_lines")
       .select("id, component_id, qty_ordered, rate, amount, qty_received, po_id")
       .eq("project_id", id)
-      .neq("line_status", "cancelled"),
+      .neq("line_status", "cancelled").order("id").range(f, t)),
   ]);
 
   // Everything ever received for this project, scoped by grn_lines' own
   // project_id (not po_lines') so untagged/site-purchase receipts with no PO
   // at all are included too, not just PO-linked ones. Powers the PO/GRN
   // receipt links shown per material in the Material Status section.
-  const { data: issuedGrnLines } = await supabase
+  const issuedGrnLines = await readAll((f, t) => supabase
     .from("grn_lines")
     .select("id, component_id, qty_received, grn_id, po_line_id")
-    .eq("project_id", id);
+    .eq("project_id", id).order("id").range(f, t));
 
   const issuedGrnIds = [...new Set((issuedGrnLines ?? []).map((g) => g.grn_id).filter((v): v is string => !!v))];
-  const { data: issuedGrns } = issuedGrnIds.length
-    ? await supabase.from("grns").select("id, grn_no, received_at").in("id", issuedGrnIds)
-    : { data: [] };
+  const issuedGrns = await readAllIn(issuedGrnIds, (c, f, t) =>
+    supabase.from("grns").select("id, grn_no, received_at").in("id", c).order("id").range(f, t));
   const issuedGrnById = new Map((issuedGrns ?? []).map((g) => [g.id, g]));
 
   const issuedPoLineIds = [...new Set((issuedGrnLines ?? []).map((g) => g.po_line_id).filter((v): v is string => !!v))];
-  const { data: issuedPoLines } = issuedPoLineIds.length
-    ? await supabase.from("po_lines").select("id, po_id").in("id", issuedPoLineIds)
-    : { data: [] };
+  const issuedPoLines = await readAllIn(issuedPoLineIds, (c, f, t) =>
+    supabase.from("po_lines").select("id, po_id").in("id", c).order("id").range(f, t));
   const issuedPoIdByPoLine = new Map((issuedPoLines ?? []).map((p) => [p.id, p.po_id]));
 
   const issuedPoIds = [...new Set((issuedPoLines ?? []).map((p) => p.po_id).filter((v): v is string => !!v))];
-  const { data: issuedPurchaseOrders } = issuedPoIds.length
-    ? await supabase.from("purchase_orders").select("id, po_no").in("id", issuedPoIds)
-    : { data: [] };
+  const issuedPurchaseOrders = await readAllIn(issuedPoIds, (c, f, t) =>
+    supabase.from("purchase_orders").select("id, po_no").in("id", c).order("id").range(f, t));
   const issuedPoNoById = new Map((issuedPurchaseOrders ?? []).map((p) => [p.id, p.po_no]));
 
   const poIds = [...new Set((poLines ?? []).map((p) => p.po_id).filter((v): v is string => !!v))];
-  const { data: purchaseOrders } = poIds.length
-    ? await supabase.from("purchase_orders").select("id, po_no, po_date, vendor_id").in("id", poIds)
-    : { data: [] };
+  const purchaseOrders = await readAllIn(poIds, (c, f, t) =>
+    supabase.from("purchase_orders").select("id, po_no, po_date, vendor_id").in("id", c).order("id").range(f, t));
   const poById = new Map((purchaseOrders ?? []).map((p) => [p.id, p]));
 
   const vendorIds = [...new Set((purchaseOrders ?? []).map((p) => p.vendor_id).filter((v): v is string => !!v))];
-  const { data: vendors } = vendorIds.length
-    ? await supabase.from("vendors").select("id, name").in("id", vendorIds)
-    : { data: [] };
+  const vendors = await readAllIn(vendorIds, (c, f, t) =>
+    supabase.from("vendors").select("id, name").in("id", c).order("id").range(f, t));
   const vendorNameById = new Map((vendors ?? []).map((v) => [v.id, v.name]));
 
   // Invoice No. lives on grns, not purchase_orders — reached via grn_lines.po_line_id.
   const poLineIds = (poLines ?? []).map((p) => p.id);
-  const { data: grnLines } = poLineIds.length
-    ? await supabase.from("grn_lines").select("po_line_id, grn_id").in("po_line_id", poLineIds)
-    : { data: [] };
+  const grnLines = await readAllIn(poLineIds, (c, f, t) =>
+    supabase.from("grn_lines").select("po_line_id, grn_id").in("po_line_id", c).order("id").range(f, t));
   const grnIds = [...new Set((grnLines ?? []).map((g) => g.grn_id).filter((v): v is string => !!v))];
-  const { data: grns } = grnIds.length
-    ? await supabase.from("grns").select("id, received_at, invoice_no").in("id", grnIds)
-    : { data: [] };
+  const grns = await readAllIn(grnIds, (c, f, t) =>
+    supabase.from("grns").select("id, received_at, invoice_no").in("id", c).order("id").range(f, t));
   const grnById = new Map((grns ?? []).map((g) => [g.id, g]));
   const lastGrnDateByPoLine = new Map<string, string>();
   const invoiceNosByPoLine = new Map<string, Set<string>>();
@@ -168,23 +164,20 @@ export default async function ProjectReportsPage({ params }: { params: Promise<{
     ...(poLines ?? []).map((p) => p.component_id),
     ...(issuedGrnLines ?? []).map((g) => g.component_id),
   ].filter((v): v is string => !!v))];
-  const { data: components } = allComponentIds.length
-    ? await supabase.from("components").select("id, component_no, name, uom, is_job_work").in("id", allComponentIds)
-    : { data: [] };
+  const components = await readAllIn(allComponentIds, (c, f, t) =>
+    supabase.from("components").select("id, component_no, name, uom, is_job_work").in("id", c).order("id").range(f, t));
 
   // v_project_shortfall only returns rows for components inside the project's
   // formal BOM tree — but plenty of real procurement (PO-only materials with
   // no BOM line) falls outside that tree entirely. For those, compute on-hand
   // / consumed directly (same source queries project_shortfall() itself uses)
   // so the exports don't silently show 0 for materials that clearly moved.
-  const [{ data: onHandLots }, { data: consumedMoves }] = allComponentIds.length
-    ? await Promise.all([
-        supabase.from("inventory_lots").select("component_id, qty_on_hand, status, project_id")
-          .in("component_id", allComponentIds).neq("status", "consumed").gt("qty_on_hand", 0),
-        supabase.from("stock_movements").select("component_id, qty, reference_type")
-          .in("component_id", allComponentIds).eq("movement_type", "issue").eq("project_id", id),
-      ])
-    : [{ data: [] }, { data: [] }];
+  const [onHandLots, consumedMoves] = await Promise.all([
+    readAllIn(allComponentIds, (c, f, t) => supabase.from("inventory_lots").select("component_id, qty_on_hand, status, project_id")
+      .in("component_id", c).neq("status", "consumed").gt("qty_on_hand", 0).order("id").range(f, t)),
+    readAllIn(allComponentIds, (c, f, t) => supabase.from("stock_movements").select("component_id, qty, reference_type")
+      .in("component_id", c).eq("movement_type", "issue").eq("project_id", id).order("id").range(f, t)),
+  ]);
   // Split on-hand lots into "blocked for this project" vs "open/available" —
   // mirrors projects/[id]/page.tsx's stockStatusRows computation exactly.
   const blockedByComponent = new Map<string, number>();

@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { readAll } from "@/lib/server/read-all";
 
 export type DocumentType = "po" | "grn" | "job_work";
 
@@ -182,14 +183,15 @@ export async function getSigningStatesBatch(
   if (!actorId || docs.length === 0) return new Map();
 
   const supabase = await createClient();
-  const [{ data: rights }, { data: sigsRaw }] = await Promise.all([
+  // All signatures of this type, paged, then narrowed in memory: listing every
+  // document id in the URL fails past a few hundred ids, silently.
+  const [{ data: rights }, allSigs] = await Promise.all([
     supabase.from("approval_rights").select("approver_order, user_id").eq("document_type", documentType),
-    supabase
-      .from("document_signatures")
-      .select("document_id, slot")
-      .eq("document_type", documentType)
-      .in("document_id", docs.map((d) => d.id)),
+    readAll((f, t) =>
+      supabase.from("document_signatures").select("document_id, slot").eq("document_type", documentType).order("document_id").order("slot").range(f, t)),
   ]);
+  const docIds = new Set(docs.map((d) => d.id));
+  const sigsRaw = allSigs.filter((s) => docIds.has(s.document_id));
 
   return computeSigningStates(docs, rights ?? [], sigsRaw ?? [], actorId);
 }

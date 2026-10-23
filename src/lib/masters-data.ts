@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { createCacheClient } from "@/lib/supabase/cache-client";
+import { readAll } from "@/lib/server/read-all";
 import type { Database } from "@/lib/database.types";
 
 // Backstop only — every write path that changes these tables calls
@@ -64,8 +65,7 @@ export const getCategories = cache(_getCategories);
 const _getComponentsFull = unstable_cache(
   async (): Promise<Component[]> => {
     const supabase = createCacheClient();
-    const { data } = await supabase.from("components").select("*").order("component_no");
-    return data ?? [];
+    return readAll((f, t) => supabase.from("components").select("*").order("component_no").order("id").range(f, t));
   },
   ["masters-components-full"],
   { tags: [MASTER_TAGS.componentsFull], revalidate: SAFETY_NET_REVALIDATE_SECONDS },
@@ -80,8 +80,8 @@ export const getComponentsFull = cache(_getComponentsFull);
 const _getComponentsSafe = unstable_cache(
   async (): Promise<Component[]> => {
     const supabase = createCacheClient();
-    const { data } = await supabase.from("v_components_safe").select("*").order("component_no");
-    return (data ?? []) as Component[];
+    const data = await readAll((f, t) => supabase.from("v_components_safe").select("*").order("component_no").order("id").range(f, t));
+    return data as Component[];
   },
   ["masters-components-safe"],
   { tags: [MASTER_TAGS.componentsSafe], revalidate: SAFETY_NET_REVALIDATE_SECONDS },
