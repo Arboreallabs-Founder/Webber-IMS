@@ -47,6 +47,10 @@ export async function getLotTraceability(lotCode: string): Promise<Traceability 
   if (!canSeeFinancials(profile.role)) {
     res.lot.unit_cost = null;
     if (res.purchase_order) res.purchase_order.rate = null;
+  } else if (res.lot?.id) {
+    // Unit cost is the PO rate; the GRN-typed rate is discontinued.
+    const { data: r } = await supabase.from("v_lot_rates").select("rate").eq("lot_id", res.lot.id).maybeSingle();
+    res.lot.unit_cost = r?.rate ?? null;
   }
 
   return res;

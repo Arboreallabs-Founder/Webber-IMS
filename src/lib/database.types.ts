@@ -4089,6 +4089,17 @@ export type Database = {
           },
         ]
       }
+      v_lot_rates: {
+        Row: {
+          component_id: string | null
+          jw_stage: Database["public"]["Enums"]["jw_stage"] | null
+          lot_id: string | null
+          qty_on_hand: number | null
+          rate: number | null
+          status: Database["public"]["Enums"]["lot_status"] | null
+        }
+        Relationships: []
+      }
       v_last_component_rate: {
         Row: {
           component_id: string | null

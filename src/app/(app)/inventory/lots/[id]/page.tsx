@@ -42,7 +42,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
   const { data: lot } = await supabase.from("inventory_lots").select("*").eq("id", id).single();
   if (!lot) notFound();
 
-  const [{ data: comp }, { data: vendor }, { data: project }, { data: moves }, { data: projects }, { data: parentLot }, customers, { data: sourceLot }, { data: slices }] =
+  const [{ data: comp }, { data: vendor }, { data: project }, { data: moves }, { data: projects }, { data: parentLot }, customers, { data: sourceLot }, { data: slices }, { data: lotRate }] =
     await Promise.all([
       lot.component_id ? supabase.from("components").select("component_no, name").eq("id", lot.component_id).maybeSingle() : Promise.resolve({ data: null }),
       lot.vendor_id ? supabase.from("vendors").select("name").eq("id", lot.vendor_id).maybeSingle() : Promise.resolve({ data: null }),
@@ -53,6 +53,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
       getCustomers(),
       lot.source_lot_id ? supabase.from("inventory_lots").select("id, lot_code").eq("id", lot.source_lot_id).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from("inventory_lots").select("id, lot_code, qty_on_hand, status, project_id, created_at").eq("source_lot_id", id).order("created_at"),
+      finance ? supabase.from("v_lot_rates").select("rate").eq("lot_id", id).maybeSingle() : Promise.resolve({ data: null }),
     ]);
   const isBox = !!lot.container_no;
   const isSlice = !!lot.source_lot_id;
@@ -103,7 +104,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
             <Info label="Location" value={lot.location} />
             <Info label="Vendor" value={vendor?.name} />
             <Info label="Project" value={projectDisplay} />
-            {finance && <Info label="Unit cost" value={formatINR(lot.unit_cost)} />}
+            {finance && <Info label="Unit cost" value={formatINR(lotRate?.rate ?? null)} />}
             <Info label="Received" value={formatDate(lot.created_at)} />
           </CardContent>
         </Card>

@@ -121,7 +121,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
   if (!comp) notFound();
   const qt = (comp as { quantity_type?: string }).quantity_type ?? "nos";
 
-  const [{ data: allLots }, { data: movements }, { data: consumptionValue }, customers] = await Promise.all([
+  const [{ data: allLots }, { data: movements }, { data: consumptionValue }, customers, { data: lotRates }] = await Promise.all([
     supabase
       .from("inventory_lots")
       // The PO a lot came from is three hops away (lot -> grn_line -> po_line ->
@@ -161,6 +161,10 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
       ? supabase.from("v_project_consumption").select("project_id, consumption_value").eq("component_id", id)
       : Promise.resolve({ data: [] }),
     getCustomers(),
+    // Unit cost shown per lot is the PO rate (the GRN-typed rate is discontinued).
+    finance
+      ? supabase.from("v_lot_rates").select("lot_id, rate").eq("component_id", id)
+      : Promise.resolve({ data: [] as { lot_id: string | null; rate: number | null }[] }),
   ]);
 
   // lot id -> the PO it was received against. Read off the embed before `lots`
@@ -173,7 +177,8 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
     if (po?.id && po.po_no) poByLot.set(l.id, { id: po.id, po_no: po.po_no });
   }
 
-  const lots = (allLots ?? []) as unknown as Lot[];
+  const rateByLot = new Map((lotRates ?? []).map((r) => [r.lot_id, r.rate]));
+  const lots = ((allLots ?? []) as unknown as Lot[]).map((l) => ({ ...l, unit_cost: finance ? rateByLot.get(l.id) ?? null : null }));
   const openLots   = lots.filter((l) => l.status === "open");
   const issuedLots = lots.filter((l) => l.status === "issued");
 

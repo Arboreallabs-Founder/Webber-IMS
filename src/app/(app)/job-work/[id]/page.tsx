@@ -25,7 +25,7 @@ export default async function JobWorkDetailPage({ params }: { params: Promise<{ 
   const finance = canSeeFinancials(profile?.role);
   const supabase = await createClient();
 
-  const [{ data: order }, { data: lines }, componentsAll, { data: lots }, vendorsAll, { data: mySignatures }] = await Promise.all([
+  const [{ data: order }, { data: lines }, componentsAll, { data: lots }, vendorsAll, { data: mySignatures }, { data: lotRates }] = await Promise.all([
     supabase.from("job_work_orders").select("*").eq("id", id).single(),
     supabase.from("job_work_lines").select("*").eq("jw_order_id", id).order("created_at"),
     getComponentsFull(),
@@ -35,8 +35,13 @@ export default async function JobWorkDetailPage({ params }: { params: Promise<{ 
     supabase.from("inventory_lots").select("id, component_id, lot_code, qty_on_hand, unit_cost, status, project_id").eq("jw_stage", "raw").in("status", ["open", "issued"]).gt("qty_on_hand", 0),
     getVendors(),
     profile ? supabase.from("signatures").select("id, label, method, image_data_url, is_default").eq("user_id", profile.id).order("is_default", { ascending: false }) : Promise.resolve({ data: [] }),
+    // Same filter as the raw lots above; the rate shown is the PO rate.
+    finance
+      ? supabase.from("v_lot_rates").select("lot_id, rate").eq("jw_stage", "raw").in("status", ["open", "issued"]).gt("qty_on_hand", 0)
+      : Promise.resolve({ data: [] as { lot_id: string | null; rate: number | null }[] }),
   ]);
   if (!order) notFound();
+  const rateByLot = new Map((lotRates ?? []).map((r) => [r.lot_id, r.rate]));
   const signingState = await getSigningState("job_work", id, order.created_by, profile?.id ?? null);
   const jwInProgress = order.status === "draft" || order.status === "pending_signature";
   const isBackfillSignature = !signingState.fullySigned && !jwInProgress;
@@ -90,7 +95,7 @@ export default async function JobWorkDetailPage({ params }: { params: Promise<{ 
     .map((l) => ({
       id: l.id, component_id: l.component_id, lot_code: l.lot_code,
       qty_on_hand: Number(l.qty_on_hand ?? 0) - (committedByLot.get(l.id) ?? 0),
-      unit_cost: finance ? (l.unit_cost ?? null) : null,
+      unit_cost: finance ? rateByLot.get(l.id) ?? null : null,
     }))
     .filter((l) => l.qty_on_hand > 0);
 
