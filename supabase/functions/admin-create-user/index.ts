@@ -13,7 +13,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-const ROLES = ["admin", "founder", "team_lead", "team_member", "viewer", "floor"];
+const ROLES = ["admin", "founder", "team_lead", "team_member", "viewer", "floor", "accounts"];
 // "factory_admin" is stored as role 'admin' with is_factory_admin = true.
 
 Deno.serve(async (req) => {

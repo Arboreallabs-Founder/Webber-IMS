@@ -10,14 +10,16 @@ export const ROLE_LABELS: Record<Role, string> = {
   team_member: "Team Member",
   viewer: "Viewer",
   floor: "Inventory Floor",
+  accounts: "Accounts (Viewer)",
 };
 
 /**
  * Roles permitted to see pricing / financial columns.
+ * 'accounts' is a read-only Viewer that sees prices (on screen and in reports).
  * 'floor' (Inventory Floor) must NEVER be added here — a hard business rule:
  * floor staff never see any price or cost, anywhere.
  */
-export const FINANCE_ROLES: Role[] = ["admin", "founder", "team_lead"];
+export const FINANCE_ROLES: Role[] = ["admin", "founder", "team_lead", "accounts"];
 
 export function canSeeFinancials(role: Role | undefined | null) {
   return !!role && FINANCE_ROLES.includes(role);
