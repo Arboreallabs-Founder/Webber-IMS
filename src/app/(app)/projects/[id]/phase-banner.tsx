@@ -41,8 +41,10 @@ function getNextStep(
         return { message: "Add at least one line item to define what is being built.", link: `#line-items`, linkLabel: "Go to line items" };
       if (!bom)
         return { message: "Generate the BOM from line items, then get it approved.", link: `#bom`, linkLabel: "Go to BOM" };
+      if (bom.status === "pending_approval")
+        return { message: "BOM is waiting for an Admin to approve it.", link: `#bom`, linkLabel: "Go to BOM" };
       if (bom.status !== "approved")
-        return { message: "BOM is draft — approve it to lock the material list.", link: `#bom`, linkLabel: "Go to BOM" };
+        return { message: "BOM is draft — approve it (or submit it for approval) to lock the material list.", link: `#bom`, linkLabel: "Go to BOM" };
       return { message: "BOM approved. Advance to Doc Approval.", nextPhase: "doc_approval", nextPhaseLabel: "Advance to Doc Approval" };
 
     case "doc_approval":

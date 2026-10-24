@@ -29,14 +29,65 @@ export function canDownloadReports(role: Role | undefined | null) {
 }
 
 /**
+ * Factory Admin: an Admin (role 'admin') with `is_factory_admin` set. Has every
+ * Admin permission except approving project BOMs (submits them instead),
+ * Approval Rights and user management. The database enforces all three.
+ */
+type RoleHolder = { role: Role; is_factory_admin?: boolean | null } | null | undefined;
+
+export function isFactoryAdmin(p: RoleHolder) {
+  return !!p && p.role === "admin" && !!p.is_factory_admin;
+}
+
+/** The role as shown on screen — "Factory Admin" for a flagged Admin. */
+export function roleLabel(p: RoleHolder) {
+  if (!p) return "";
+  return isFactoryAdmin(p) ? "Factory Admin" : ROLE_LABELS[p.role];
+}
+
+/** Choices on the Users screen: the roles, plus Factory Admin right after Admin. */
+export type RoleChoice = Role | "factory_admin";
+export const ROLE_CHOICES: { value: RoleChoice; label: string }[] = (Object.keys(ROLE_LABELS) as Role[]).flatMap(
+  (r): { value: RoleChoice; label: string }[] =>
+    r === "admin"
+      ? [{ value: r, label: ROLE_LABELS[r] }, { value: "factory_admin", label: "Factory Admin" }]
+      : [{ value: r, label: ROLE_LABELS[r] }],
+);
+
+export function roleChoiceOf(p: { role: Role; is_factory_admin?: boolean | null }): RoleChoice {
+  return isFactoryAdmin(p) ? "factory_admin" : p.role;
+}
+
+/** Turns a Users-screen choice into what is stored on the profile. */
+export function profileRoleFields(choice: string): { role: Role; is_factory_admin: boolean } {
+  if (choice === "factory_admin") return { role: "admin", is_factory_admin: true };
+  const role = (Object.keys(ROLE_LABELS) as Role[]).includes(choice as Role) ? (choice as Role) : "team_member";
+  return { role, is_factory_admin: false };
+}
+
+/** Approving a project BOM: Admin or Team Lead, never a Factory Admin. */
+export function canApproveBom(p: RoleHolder) {
+  return !!p && (p.role === "admin" || p.role === "team_lead") && !isFactoryAdmin(p);
+}
+
+/** Creating users and changing roles: full Admin only. */
+export function canManageUsers(p: RoleHolder) {
+  return !!p && p.role === "admin" && !isFactoryAdmin(p);
+}
+
+const FACTORY_ADMIN_BLOCKED_PATHS = ["/masters/approval-rights", "/admin/users"];
+
+/**
  * Inventory Floor sees only these areas (allowlist, so a new page stays hidden
  * from them until deliberately added). Every other role sees everything.
  */
 const FLOOR_PATHS = ["/requisitions", "/purchase-orders", "/grn", "/inventory", "/traceability", "/account"];
 
-export function canAccessPath(role: Role | undefined | null, path: string) {
+export function canAccessPath(role: Role | undefined | null, path: string, factoryAdmin = false) {
+  const under = (p: string) => path === p || path.startsWith(`${p}/`);
+  if (factoryAdmin && FACTORY_ADMIN_BLOCKED_PATHS.some(under)) return false;
   if (role !== "floor") return true;
-  return FLOOR_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
+  return FLOOR_PATHS.some(under);
 }
 
 /** Where a role lands instead of the dashboard. */

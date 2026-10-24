@@ -48,9 +48,9 @@ export const NAV: NavGroup[] = [
   },
 ];
 
-export function visibleGroups(role: Role): NavGroup[] {
+export function visibleGroups(role: Role, factoryAdmin = false): NavGroup[] {
   return NAV.map((g) => ({
     ...g,
-    items: g.items.filter((i) => (!i.roles || i.roles.includes(role)) && canAccessPath(role, i.href)),
+    items: g.items.filter((i) => (!i.roles || i.roles.includes(role)) && canAccessPath(role, i.href, factoryAdmin)),
   })).filter((g) => g.items.length > 0);
 }

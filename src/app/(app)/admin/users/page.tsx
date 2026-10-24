@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth";
+import { requirePathAccess, requireRole } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,7 @@ export default async function UsersPage({
 }: {
   searchParams: Promise<{ tab?: string; category?: string; actor?: string; from?: string; to?: string }>;
 }) {
+  await requirePathAccess("/admin/users");
   const profile = await requireRole(["admin", "founder"]);
   const isAdmin = profile.role === "admin";
   const { tab: tabParam, category = "", actor = "", from = "", to = "" } = await searchParams;

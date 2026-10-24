@@ -383,7 +383,10 @@ export type Database = {
           created_by: string | null
           id: string
           project_id: string
+          review_note: string | null
           status: Database["public"]["Enums"]["bom_status"]
+          submitted_at: string | null
+          submitted_by: string | null
           updated_at: string | null
         }
         Insert: {
@@ -393,7 +396,10 @@ export type Database = {
           created_by?: string | null
           id?: string
           project_id: string
+          review_note?: string | null
           status?: Database["public"]["Enums"]["bom_status"]
+          submitted_at?: string | null
+          submitted_by?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -403,7 +409,10 @@ export type Database = {
           created_by?: string | null
           id?: string
           project_id?: string
+          review_note?: string | null
           status?: Database["public"]["Enums"]["bom_status"]
+          submitted_at?: string | null
+          submitted_by?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -2426,6 +2435,7 @@ export type Database = {
           full_name: string | null
           id: string
           is_active: boolean
+          is_factory_admin: boolean
           role: Database["public"]["Enums"]["role"]
           updated_at: string | null
         }
@@ -2435,6 +2445,7 @@ export type Database = {
           full_name?: string | null
           id: string
           is_active?: boolean
+          is_factory_admin?: boolean
           role?: Database["public"]["Enums"]["role"]
           updated_at?: string | null
         }
@@ -2444,6 +2455,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           is_active?: boolean
+          is_factory_admin?: boolean
           role?: Database["public"]["Enums"]["role"]
           updated_at?: string | null
         }
@@ -4902,6 +4914,7 @@ export type Database = {
           full_name: string
           id: string
           is_active: boolean
+          is_factory_admin: boolean
           role: Database["public"]["Enums"]["role"]
         }[]
       }
@@ -5125,7 +5138,7 @@ export type Database = {
     }
     Enums: {
       bom_line_source: "template" | "manual" | "site_purchase"
-      bom_status: "draft" | "approved"
+      bom_status: "draft" | "pending_approval" | "approved"
       doc_status: "pending" | "approved" | "rejected"
       doc_type: "qap" | "drawing" | "spec" | "other"
       fg_status: "in_production" | "ready" | "dispatched"
@@ -5286,7 +5299,7 @@ export const Constants = {
   public: {
     Enums: {
       bom_line_source: ["template", "manual", "site_purchase"],
-      bom_status: ["draft", "approved"],
+      bom_status: ["draft", "pending_approval", "approved"],
       doc_status: ["pending", "approved", "rejected"],
       doc_type: ["qap", "drawing", "spec", "other"],
       fg_status: ["in_production", "ready", "dispatched"],

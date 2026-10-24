@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Wrench, ClipboardCheck, Truck, Users, ShieldCheck, Hammer } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
-import { requirePathAccess } from "@/lib/auth";
+import { isFactoryAdmin, requirePathAccess } from "@/lib/auth";
+import { canAccessPath } from "@/lib/roles";
 
 const MASTERS = [
   { label: "BOM Builder", href: "/masters/bom-builder", description: "Create, edit, duplicate, and delete product BOMs, variants, categories, and sub-assemblies.", icon: Hammer },
@@ -14,7 +15,8 @@ const MASTERS = [
 ];
 
 export default async function MasterDataPage() {
-  await requirePathAccess("/masters");
+  const profile = await requirePathAccess("/masters");
+  const masters = MASTERS.filter((m) => canAccessPath(profile.role, m.href, isFactoryAdmin(profile)));
   return (
     <div>
       <PageHeader
@@ -22,7 +24,7 @@ export default async function MasterDataPage() {
         description="Catalogue and partner reference data that everything else in the app builds on."
       />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {MASTERS.map((m) => {
+        {masters.map((m) => {
           const Icon = m.icon;
           return (
             <Link key={m.href} href={m.href}>

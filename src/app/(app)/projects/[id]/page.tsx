@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, canApproveBom, requirePathAccess } from "@/lib/auth";
 import { getVendors, getComponentsFull, getCustomers } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +28,9 @@ import {
   startCustomBom,
   approveBom,
   unapproveBom,
+  submitBom,
+  withdrawBom,
+  sendBackBom,
   addManualBomLine,
   removeBomLine,
   updateProjectStatus,
@@ -72,7 +75,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     supabase.from("products").select("id, sku_code, model_name").order("sku_code"),
     supabase.from("product_variant_params").select("*").order("sort_order"),
     supabase.from("project_line_items").select("*").eq("project_id", id).order("created_at"),
-    supabase.from("boms").select("id, status, approved_at").eq("project_id", id).maybeSingle(),
+    supabase.from("boms").select("id, status, approved_at, approved_by, submitted_at, submitted_by, review_note").eq("project_id", id).maybeSingle(),
     getComponentsFull(),
     getVendors(),
     getCustomers(),
@@ -135,14 +138,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   // Wave 2 (parallel, needs wave 1's bom.id / myJwOrderIds) — these two
   // queries don't depend on each other, only on wave 1's results.
-  const [{ data: rawBomLines }, { data: myJwLines }] = await Promise.all([
+  const bomPeopleIds = [bom?.approved_by, bom?.submitted_by].filter((v): v is string => !!v);
+  const [{ data: rawBomLines }, { data: myJwLines }, { data: bomPeople }] = await Promise.all([
     bom
       ? supabase.from("bom_lines").select("id, component_id, required_qty, source, note").eq("bom_id", bom.id).order("source")
       : Promise.resolve({ data: null }),
     myJwOrderIds.length
       ? supabase.from("job_work_lines").select("jw_order_id, component_id, qty_sent, qty_returned").in("jw_order_id", myJwOrderIds)
       : Promise.resolve({ data: [] }),
+    bomPeopleIds.length
+      ? supabase.from("profiles").select("id, full_name").in("id", bomPeopleIds)
+      : Promise.resolve({ data: [] }),
   ]);
+  const personName = new Map((bomPeople ?? []).map((u) => [u.id, u.full_name ?? "—"]));
 
   let bomLines: { id: string; component_id: string | null; component_label: string; required_qty: number; source: string; note: string | null }[] = [];
   const plannedByComponent = new Map<string, number>();
@@ -398,14 +406,26 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       <ShowMoreRows id="bom" title="Bill of Materials">
         <BomPanel
           projectId={id}
-          bom={bom ?? null}
+          bom={bom ? {
+            id: bom.id,
+            status: bom.status,
+            approved_at: bom.approved_at,
+            approved_by_name: bom.approved_by ? personName.get(bom.approved_by) ?? null : null,
+            submitted_at: bom.submitted_at,
+            submitted_by_name: bom.submitted_by ? personName.get(bom.submitted_by) ?? null : null,
+            review_note: bom.review_note,
+          } : null}
           lines={bomLines}
           components={components ?? []}
           canWrite={canWrite}
+          canApprove={canApproveBom(profile)}
           generateAction={generateBom}
           startCustomAction={startCustomBom}
           approveAction={approveBom}
           unapproveAction={unapproveBom}
+          submitAction={submitBom}
+          withdrawAction={withdrawBom}
+          sendBackAction={sendBackBom}
           addManualAction={addManualBomLine}
           removeLineAction={removeBomLine}
         />

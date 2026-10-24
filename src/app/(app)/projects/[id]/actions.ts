@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters } from "@/lib/auth";
+import { getProfile, canWriteMasters, canApproveBom } from "@/lib/auth";
 import { expandBomLines, type TemplateLine } from "@/lib/bom-engine";
 import { readAll } from "@/lib/server/read-all";
 
@@ -180,8 +180,9 @@ export async function generateBom(fd: FormData): Promise<ActionResult> {
       .single();
     if (error) return { error: error.message };
     bomId = bom.id;
-  } else if (existingBom?.status === "approved") {
-    await supabase.from("boms").update({ status: "draft", approved_by: null, approved_at: null }).eq("id", bomId);
+  } else if (existingBom?.status !== "draft") {
+    // Regenerating an approved or submitted BOM sends it back to draft — it needs approving again.
+    await supabase.from("boms").update(BACK_TO_DRAFT).eq("id", bomId);
   }
 
   // 3) clear previous template-sourced lines (keep manual)
@@ -260,17 +261,123 @@ export async function startCustomBom(fd: FormData): Promise<ActionResult> {
 }
 
 // ---------- BOM approval + manual lines ----------
-export async function approveBom(fd: FormData): Promise<ActionResult> {
+// Draft -> (Submit) -> Waiting for approval -> (Approve) -> Approved.
+// An Admin or Team Lead can approve straight from draft. A Factory Admin can
+// only submit; the boms_guard_approval trigger refuses an approval from them.
+const BACK_TO_DRAFT = {
+  status: "draft" as const,
+  approved_by: null,
+  approved_at: null,
+  submitted_by: null,
+  submitted_at: null,
+};
+
+async function bomState(supabase: Awaited<ReturnType<typeof createClient>>, bom_id: string) {
+  const { data } = await supabase.from("boms").select("id, status, project_id, submitted_by").eq("id", bom_id).maybeSingle();
+  return data;
+}
+
+/** Tell people in the app (and on their phones) about a BOM step. */
+async function notify(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  type: string,
+  project_id: string,
+  recipients: string[],
+  message: (projectNo: string) => string,
+  actorId: string,
+) {
+  const to = [...new Set(recipients)].filter((r) => r && r !== actorId);
+  if (to.length === 0) return;
+  const { data: project } = await supabase.from("projects").select("project_no").eq("id", project_id).maybeSingle();
+  const text = message(project?.project_no ?? "a project");
+  await supabase.from("notifications").insert(
+    to.map((recipient_id) => ({ type, project_id, message: text, link_path: `/projects/${project_id}#bom`, created_by: actorId, recipient_id })),
+  );
+}
+
+export async function submitBom(fd: FormData): Promise<ActionResult> {
   const p = await planner();
-  if (!p) return { error: "Only Admin / Team Lead can approve." };
+  if (!p) return { error: "Not authorized." };
   const bom_id = String(fd.get("bom_id") ?? "");
   const project_id = String(fd.get("project_id") ?? "");
   const supabase = await createClient();
+  const bom = await bomState(supabase, bom_id);
+  if (!bom) return { error: "BOM not found." };
+  if (bom.status !== "draft") return { error: "Only a draft BOM can be submitted." };
+  const { count } = await supabase.from("bom_lines").select("id", { count: "exact", head: true }).eq("bom_id", bom_id);
+  if (!count) return { error: "Add at least one line before submitting." };
+
   const { error } = await supabase
     .from("boms")
-    .update({ status: "approved", approved_by: p.id, approved_at: new Date().toISOString() })
+    .update({ status: "pending_approval", submitted_by: p.id, submitted_at: new Date().toISOString(), review_note: null })
+    .eq("id", bom_id)
+    .eq("status", "draft");
+  if (error) return { error: error.message };
+
+  const { data: approvers } = await supabase
+    .from("profiles")
+    .select("id")
+    .in("role", ["admin", "team_lead"])
+    .eq("is_factory_admin", false)
+    .eq("is_active", true);
+  await notify(supabase, "bom_submitted", project_id, (approvers ?? []).map((a) => a.id),
+    (no) => `${p.full_name ?? "Someone"} submitted the BOM for ${no} for approval.`, p.id);
+
+  revalidate(project_id);
+  return { ok: true, message: "Submitted for approval. An Admin will review it." };
+}
+
+export async function withdrawBom(fd: FormData): Promise<ActionResult> {
+  const p = await planner();
+  if (!p) return { error: "Not authorized." };
+  const bom_id = String(fd.get("bom_id") ?? "");
+  const project_id = String(fd.get("project_id") ?? "");
+  const supabase = await createClient();
+  const { error } = await supabase.from("boms").update(BACK_TO_DRAFT).eq("id", bom_id).eq("status", "pending_approval");
+  if (error) return { error: error.message };
+  revalidate(project_id);
+  return { ok: true };
+}
+
+export async function sendBackBom(fd: FormData): Promise<ActionResult> {
+  const p = await getProfile();
+  if (!canApproveBom(p)) return { error: "Only an Admin or Team Lead can send a BOM back." };
+  const bom_id = String(fd.get("bom_id") ?? "");
+  const project_id = String(fd.get("project_id") ?? "");
+  const reason = String(fd.get("reason") ?? "").trim();
+  if (!reason) return { error: "Say what needs changing." };
+  const supabase = await createClient();
+  const bom = await bomState(supabase, bom_id);
+  if (!bom || bom.status !== "pending_approval") return { error: "This BOM isn't waiting for approval." };
+
+  const { error } = await supabase.from("boms").update({ ...BACK_TO_DRAFT, review_note: reason }).eq("id", bom_id);
+  if (error) return { error: error.message };
+  if (bom.submitted_by) {
+    await notify(supabase, "bom_sent_back", project_id, [bom.submitted_by],
+      (no) => `${p!.full_name ?? "An Admin"} sent the BOM for ${no} back: ${reason}`, p!.id);
+  }
+  revalidate(project_id);
+  return { ok: true };
+}
+
+export async function approveBom(fd: FormData): Promise<ActionResult> {
+  const p = await getProfile();
+  if (!canApproveBom(p)) return { error: "Only an Admin or Team Lead can approve a BOM — submit it for approval instead." };
+  const bom_id = String(fd.get("bom_id") ?? "");
+  const project_id = String(fd.get("project_id") ?? "");
+  const supabase = await createClient();
+  const bom = await bomState(supabase, bom_id);
+  if (!bom) return { error: "BOM not found." };
+  if (bom.status === "approved") return { error: "This BOM is already approved." };
+  const { error } = await supabase
+    .from("boms")
+    .update({ status: "approved", approved_by: p!.id, approved_at: new Date().toISOString(), review_note: null })
     .eq("id", bom_id);
   if (error) return { error: error.message };
+  if (bom.submitted_by) {
+    await notify(supabase, "bom_approved", project_id, [bom.submitted_by],
+      (no) => `${p!.full_name ?? "An Admin"} approved the BOM for ${no}.`, p!.id);
+  }
 
   // The requirement may have just changed — free any reservation the project
   // no longer needs rather than waiting for its next consumption.
@@ -286,19 +393,26 @@ export async function approveBom(fd: FormData): Promise<ActionResult> {
     : { ok: true };
 }
 
+/** "Unapprove" for an approver, "Edit BOM" for a Factory Admin — back to draft either way. */
 export async function unapproveBom(fd: FormData): Promise<ActionResult> {
   const p = await planner();
   if (!p) return { error: "Not authorized." };
   const bom_id = String(fd.get("bom_id") ?? "");
   const project_id = String(fd.get("project_id") ?? "");
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("boms")
-    .update({ status: "draft", approved_by: null, approved_at: null })
-    .eq("id", bom_id);
+  const { error } = await supabase.from("boms").update(BACK_TO_DRAFT).eq("id", bom_id).eq("status", "approved");
   if (error) return { error: error.message };
   revalidate(project_id);
   return { ok: true };
+}
+
+/** Lines can only change while the BOM is a draft. */
+async function draftBomOrError(supabase: Awaited<ReturnType<typeof createClient>>, bom_id: string) {
+  const bom = await bomState(supabase, bom_id);
+  if (!bom) return "BOM not found.";
+  if (bom.status === "approved") return "This BOM is approved — edit it first.";
+  if (bom.status === "pending_approval") return "This BOM is waiting for approval — withdraw it first.";
+  return null;
 }
 
 export async function addManualBomLine(fd: FormData): Promise<ActionResult> {
@@ -310,6 +424,8 @@ export async function addManualBomLine(fd: FormData): Promise<ActionResult> {
   const required_qty = Number(fd.get("required_qty") ?? 0) || 0;
   if (!component_id) return { error: "Pick a component." };
   const supabase = await createClient();
+  const locked = await draftBomOrError(supabase, bom_id);
+  if (locked) return { error: locked };
   const { error } = await supabase.from("bom_lines").insert({
     bom_id,
     component_id,
@@ -329,6 +445,10 @@ export async function removeBomLine(fd: FormData): Promise<ActionResult> {
   const id = String(fd.get("id") ?? "");
   const project_id = String(fd.get("project_id") ?? "");
   const supabase = await createClient();
+  const { data: line } = await supabase.from("bom_lines").select("bom_id").eq("id", id).maybeSingle();
+  if (!line) return { error: "Line not found." };
+  const locked = await draftBomOrError(supabase, line.bom_id);
+  if (locked) return { error: locked };
   const { error } = await supabase.from("bom_lines").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidate(project_id);

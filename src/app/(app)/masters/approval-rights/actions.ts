@@ -6,10 +6,10 @@ import { getProfile } from "@/lib/auth";
 
 export type ActionResult = { ok?: true; error?: string; id?: string };
 
-/** Admin-only, matching the `aright_mod` RLS policy exactly — the real backstop. */
+/** Full Admin only (not Factory Admin), matching the `aright_mod` RLS policy exactly — the real backstop. */
 export async function upsert(fd: FormData): Promise<ActionResult> {
   const p = await getProfile();
-  if (p?.role !== "admin") return { error: "Only Admin can configure approval rights." };
+  if (p?.role !== "admin" || p.is_factory_admin) return { error: "Only Admin can configure approval rights." };
 
   const id = String(fd.get("id") ?? "") || null;
   const document_type = String(fd.get("document_type") ?? "");
@@ -34,7 +34,7 @@ export async function upsert(fd: FormData): Promise<ActionResult> {
 
 export async function remove(fd: FormData): Promise<ActionResult> {
   const p = await getProfile();
-  if (p?.role !== "admin") return { error: "Only Admin can configure approval rights." };
+  if (p?.role !== "admin" || p.is_factory_admin) return { error: "Only Admin can configure approval rights." };
   const id = String(fd.get("id") ?? "");
   if (!id) return { error: "Missing id." };
   const supabase = await createClient();

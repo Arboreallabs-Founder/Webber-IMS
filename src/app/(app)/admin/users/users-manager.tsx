@@ -11,7 +11,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { ROLE_LABELS, type Role } from "@/lib/roles";
+import { ROLE_CHOICES, roleChoiceOf, roleLabel, type Role } from "@/lib/roles";
 import { formatDate } from "@/lib/utils";
 import { createUser, updateUser, type ActionResult } from "./actions";
 
@@ -20,11 +20,12 @@ type AppUser = {
   email: string;
   full_name: string | null;
   role: Role;
+  is_factory_admin: boolean;
   is_active: boolean;
   created_at: string;
 };
 
-const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as Role[]).map((r) => ({ value: r, label: ROLE_LABELS[r] }));
+const ROLE_OPTIONS = ROLE_CHOICES;
 
 export function UsersManager({ users }: { users: AppUser[] }) {
   const router = useRouter();
@@ -36,7 +37,7 @@ export function UsersManager({ users }: { users: AppUser[] }) {
   const filteredUsers = users.filter((u) => {
     if (!query) return true;
     const q = query.toLowerCase();
-    return (u.full_name ?? "").toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || ROLE_LABELS[u.role].toLowerCase().includes(q);
+    return (u.full_name ?? "").toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || roleLabel(u).toLowerCase().includes(q);
   });
 
   async function run(action: (fd: FormData) => Promise<ActionResult>, form: HTMLFormElement, onOk: () => void) {
@@ -80,7 +81,7 @@ export function UsersManager({ users }: { users: AppUser[] }) {
             <TableRow key={u.id}>
               <TableCell className="font-medium">{u.full_name ?? "—"}</TableCell>
               <TableCell className="text-muted-foreground">{u.email}</TableCell>
-              <TableCell><Badge>{ROLE_LABELS[u.role]}</Badge></TableCell>
+              <TableCell><Badge>{roleLabel(u)}</Badge></TableCell>
               <TableCell>
                 {u.is_active ? <Badge variant="success">Active</Badge> : <Badge variant="destructive">Inactive</Badge>}
               </TableCell>
@@ -123,7 +124,7 @@ export function UsersManager({ users }: { users: AppUser[] }) {
             <input type="hidden" name="id" value={editing.id} />
             <Field label="Full name"><Input name="full_name" defaultValue={editing.full_name ?? ""} /></Field>
             <Field label="Role">
-              <Select name="role" defaultValue={editing.role}>
+              <Select name="role" defaultValue={roleChoiceOf(editing)}>
                 {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
               </Select>
             </Field>
