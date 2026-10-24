@@ -277,8 +277,22 @@ async function JobWorkGrnPage({
     supabase.from("grn_lines").select("id, component_id, qty_received, unit_cost, jw_line_id").eq("grn_id", grnId).order("created_at"),
   ]);
 
+  // Outstanding counts receipts still awaiting inspection too: qty_returned only
+  // rises once a receipt is processed, so on its own it lets the same piece be
+  // received again while the first IRN is pending.
+  const openLineIds = (openLinesRaw ?? []).map((l) => l.id);
+  const { data: enteredRows } = openLineIds.length
+    ? await supabase.from("grn_lines").select("jw_line_id, qty_received").in("jw_line_id", openLineIds)
+    : { data: [] };
+  const enteredByLine = new Map<string, number>();
+  for (const r of enteredRows ?? []) {
+    if (r.jw_line_id) enteredByLine.set(r.jw_line_id, (enteredByLine.get(r.jw_line_id) ?? 0) + Number(r.qty_received ?? 0));
+  }
   const openOutstanding = (openLinesRaw ?? [])
-    .map((l) => ({ ...l, outstanding: Number(l.qty_sent ?? 0) - Number(l.qty_returned ?? 0) }))
+    .map((l) => ({
+      ...l,
+      outstanding: Number(l.qty_sent ?? 0) - Math.max(Number(l.qty_returned ?? 0), enteredByLine.get(l.id) ?? 0),
+    }))
     .filter((l) => l.outstanding > 0);
 
   const componentIds = [...new Set([
