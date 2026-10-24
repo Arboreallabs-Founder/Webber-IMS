@@ -68,6 +68,19 @@ export async function blockStockForBom(fd: FormData): Promise<ActionResult> {
     if (left > 0) byComponent.set(c.component_id, left);
     else byComponent.delete(c.component_id);
   }
+  // Raw material out with a job-work vendor for this project isn't consumption,
+  // but it is already spoken for — don't block more stock in its place.
+  const { data: jwOut } = await supabase
+    .from("job_work_orders")
+    .select("job_work_lines(component_id, qty_sent, qty_returned)")
+    .eq("project_id", project_id)
+    .in("status", ["sent", "partial"]);
+  for (const l of (jwOut ?? []).flatMap((o) => o.job_work_lines ?? [])) {
+    if (!l.component_id || !byComponent.has(l.component_id)) continue;
+    const left = byComponent.get(l.component_id)! - Math.max(Number(l.qty_sent ?? 0) - Number(l.qty_returned ?? 0), 0);
+    if (left > 0) byComponent.set(l.component_id, left);
+    else byComponent.delete(l.component_id);
+  }
   if (byComponent.size === 0) return { ok: true, message: "Nothing to block — the project has already consumed everything on the BOM." };
 
   const { data: reqNo } = await supabase.rpc("next_req_no");

@@ -166,19 +166,35 @@ export default async function DashboardPage() {
 
 /**
  * Shelf stock at the PO rate, split by lot status: "open" is free stock,
- * "issued" is blocked for a project (also totalled per project). Paged,
- * because there are well over the 1,000 rows PostgREST returns per request
- * and it truncates silently.
+ * "issued" is blocked for a project (also totalled per project). Raw material
+ * out with a job-work vendor counts as blocked for the order's project: it
+ * isn't consumed until the completed piece is used. Paged, because there are
+ * well over the 1,000 rows PostgREST returns per request and it truncates
+ * silently.
  */
 async function shelfStockByStatus(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const [rates, lots] = await Promise.all([
+  const [rates, lots, jwOrders] = await Promise.all([
     readAll((from, to) =>
       supabase.from("v_lot_rates").select("lot_id, status, qty_on_hand, rate")
         .in("status", ["open", "issued"]).gt("qty_on_hand", 0).order("lot_id").range(from, to)),
     readAll((from, to) =>
       supabase.from("inventory_lots").select("id, project_id")
         .eq("status", "issued").gt("qty_on_hand", 0).order("id").range(from, to)),
+    readAll((from, to) =>
+      supabase.from("job_work_orders").select("id, project_id, job_work_lines(raw_lot_id, qty_sent, qty_returned)")
+        .in("status", ["sent", "partial"]).order("id").range(from, to)),
   ]);
+  const atVendor = jwOrders.flatMap((o) =>
+    (o.job_work_lines ?? []).map((l) => ({
+      projectId: o.project_id,
+      rawLotId: l.raw_lot_id,
+      qty: Math.max(Number(l.qty_sent ?? 0) - Number(l.qty_returned ?? 0), 0),
+    })),
+  ).filter((l) => l.qty > 0 && l.rawLotId);
+  const rawRates = atVendor.length
+    ? await supabase.from("v_lot_rates").select("lot_id, rate").in("lot_id", [...new Set(atVendor.map((l) => l.rawLotId!))])
+    : { data: [] };
+  const rawRate = new Map((rawRates.data ?? []).map((r) => [r.lot_id, Number(r.rate ?? 0)]));
   const projectByLot = new Map(lots.map((l) => [l.id, l.project_id]));
   const totals = { open: 0, blocked: 0, blockedByProject: new Map<string, number>() };
   for (const r of rates) {
@@ -187,6 +203,11 @@ async function shelfStockByStatus(supabase: Awaited<ReturnType<typeof createClie
     totals.blocked += v;
     const pid = r.lot_id ? projectByLot.get(r.lot_id) : null;
     if (pid) totals.blockedByProject.set(pid, (totals.blockedByProject.get(pid) ?? 0) + v);
+  }
+  for (const l of atVendor) {
+    const v = l.qty * (rawRate.get(l.rawLotId!) ?? 0);
+    totals.blocked += v;
+    if (l.projectId) totals.blockedByProject.set(l.projectId, (totals.blockedByProject.get(l.projectId) ?? 0) + v);
   }
   return totals;
 }

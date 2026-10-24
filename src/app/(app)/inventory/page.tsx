@@ -36,10 +36,11 @@ export default async function InventoryPage() {
   const empty = Promise.resolve([] as never[]);
   const [lots, lotRates, receipts, consumption, grnLines, grns, poLines, purchaseOrders, projects, vendorRows] = await Promise.all([
     canDownload ? readAll((f, t) => supabase.from("inventory_lots").select("id, component_id, vendor_id, qty_on_hand, qty_initial, grn_line_id").order("id").range(f, t)) : empty,
-    canDownload ? readAll((f, t) => supabase.from("v_lot_rates").select("lot_id, rate").order("lot_id").range(f, t)) : empty,
+    canDownload ? readAll((f, t) => supabase.from("v_lot_rates").select("lot_id, rate, jw_charge").order("lot_id").range(f, t)) : empty,
     // Received qty per lot comes from the receipt ledger, not qty_initial: a box topped up
-    // by a later GRN gets a receipt movement but its qty_initial is never raised.
-    canDownload ? readAll((f, t) => supabase.from("stock_movements").select("id, lot_id, qty").eq("movement_type", "receipt").order("id").range(f, t)) : empty,
+    // by a later GRN gets a receipt movement but its qty_initial is never raised. A job-work
+    // receipt on a raw lot is a dispatch being credited back (order superseded), not new stock.
+    canDownload ? readAll((f, t) => supabase.from("stock_movements").select("id, lot_id, qty").eq("movement_type", "receipt").or("reference_type.is.null,reference_type.neq.job_work").order("id").range(f, t)) : empty,
     // Which project(s) each component was actually *consumed* on — from the issue/return
     // ledger, netted, independent of the PO the stock was ordered against. Powers the
     // "WIP on Project" column in the Excel export.
@@ -54,7 +55,9 @@ export default async function InventoryPage() {
 
   const vendorById = new Map(vendorRows.map((v) => [v.id, v]));
   // Approved PO rate per lot (legacy typed cost only where there's no approved PO line).
-  const rateByLot = new Map(lotRates.map((r) => [r.lot_id, r.rate]));
+  // A job-work return shows the job-work charge alone: its raw material is already a row
+  // of its own at the PO rate, so the full rate would count it twice in the total.
+  const rateByLot = new Map(lotRates.map((r) => [r.lot_id, r.jw_charge ?? r.rate]));
   const receivedByLot = new Map<string, number>();
   for (const m of receipts) if (m.lot_id) receivedByLot.set(m.lot_id, (receivedByLot.get(m.lot_id) ?? 0) + Number(m.qty ?? 0));
   // A lot with no receipt got its stock by transfer (an old-style split off another lot, whose

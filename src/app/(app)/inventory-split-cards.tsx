@@ -12,7 +12,7 @@ export type ProjectValue = { projectId: string; label: string; value: number };
 const DETAIL = {
   blocked: {
     title: "Blocked inventory by project",
-    description: "On the shelf, reserved for a project and not yet used. Valued at PO rate.",
+    description: "Reserved for a project and not yet used — on the shelf or out with a job-work vendor. Valued at PO rate.",
   },
   wip: {
     title: "WIP by project",
