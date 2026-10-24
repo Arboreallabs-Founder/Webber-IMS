@@ -274,7 +274,7 @@ async function JobWorkGrnPage({
           .in("job_work_orders.status", ["sent", "partial"])
           .eq("job_work_orders.vendor_id", grn.vendor_id)
       : Promise.resolve({ data: [] }),
-    supabase.from("grn_lines").select("id, component_id, qty_received, unit_cost, jw_line_id").eq("grn_id", grnId).order("created_at"),
+    supabase.from("grn_lines").select("id, component_id, qty_received, unit_cost, jw_line_id, processed_at").eq("grn_id", grnId).order("created_at"),
   ]);
 
   // Outstanding counts receipts still awaiting inspection too: qty_returned only
@@ -425,7 +425,7 @@ async function JobWorkGrnPage({
       irn_status: irn?.status ?? null,
       irn_no: irn?.irn_no ?? null,
       // Same deferred-until-fully-signed rule as the non-job-work GRN table.
-      pending: !(l as { processed_at?: string | null }).processed_at,
+      pending: !l.processed_at,
     };
   });
 
