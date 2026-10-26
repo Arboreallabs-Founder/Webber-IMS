@@ -377,6 +377,7 @@ export type Database = {
       }
       boms: {
         Row: {
+          first_approved_at: string | null
           approved_at: string | null
           approved_by: string | null
           created_at: string
@@ -390,6 +391,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          first_approved_at?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
@@ -403,6 +405,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          first_approved_at?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
@@ -2722,6 +2725,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          bom_policy: string
           created_at: string
           created_by: string | null
           customer_id: string | null
@@ -2736,6 +2740,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          bom_policy?: string
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
@@ -2750,6 +2755,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          bom_policy?: string
           created_at?: string
           created_by?: string | null
           customer_id?: string | null

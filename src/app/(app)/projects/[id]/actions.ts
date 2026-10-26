@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canApproveBom } from "@/lib/auth";
+import { getProfile, canWriteMasters, canApproveBom, canManageUsers } from "@/lib/auth";
 import { expandBomLines, type TemplateLine } from "@/lib/bom-engine";
 import { readAll } from "@/lib/server/read-all";
 
@@ -26,6 +26,23 @@ export async function updateProjectStatus(fd: FormData): Promise<ActionResult> {
   if (!project_id || !status) return { error: "Missing fields." };
   const supabase = await createClient();
   const { error } = await supabase.from("projects").update({ status }).eq("id", project_id);
+  if (error) return { error: error.message };
+  revalidate(project_id);
+  return { ok: true };
+}
+
+// ---------- does this project need a BOM? ----------
+// New projects need an approved BOM before POs, blocking or consumption (the
+// database enforces it). A full Admin can mark a project "No BOM needed" —
+// consumables, fixed assets and other internal projects — or undo that.
+export async function setBomPolicy(fd: FormData): Promise<ActionResult> {
+  const p = await getProfile();
+  if (!canManageUsers(p)) return { error: "Only an Admin can change whether a project needs a BOM." };
+  const project_id = String(fd.get("project_id") ?? "");
+  const policy = String(fd.get("policy") ?? "");
+  if (!project_id || !["required", "not_needed"].includes(policy)) return { error: "Missing fields." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("projects").update({ bom_policy: policy }).eq("id", project_id);
   if (error) return { error: error.message };
   revalidate(project_id);
   return { ok: true };
