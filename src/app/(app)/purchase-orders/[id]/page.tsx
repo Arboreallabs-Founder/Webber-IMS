@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canSeeFinancials, canWriteMasters } from "@/lib/auth";
+import { getProfile, canSeeFinancials, canWriteMasters, canManageUsers } from "@/lib/auth";
 import { canDeletePurchaseOrders } from "@/lib/roles";
 import { getVendors, getComponents, getCustomers } from "@/lib/masters-data";
 import { getSigningState } from "@/lib/signatures";
@@ -94,8 +94,9 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
 
   const pricesApproved = lineRows.every((l) => l.approval_status === "approved");
   // The print page enforces BOTH gates server-side; mirror them here so the
-  // button never offers a print the destination would refuse.
-  const printable = pricesApproved && signingState.fullySigned;
+  // button never offers a print the destination would refuse. A full Admin
+  // can print before it is fully signed (the copy is marked unsigned).
+  const printable = pricesApproved && (signingState.fullySigned || canManageUsers(profile));
 
   // What the "not ready to print" dialog shows. Naming the people is the point
   // — a count of missing signatures doesn't tell anyone who to chase.

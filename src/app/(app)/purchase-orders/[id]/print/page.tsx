@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canDownloadReports } from "@/lib/auth";
+import { getProfile, canDownloadReports, canManageUsers } from "@/lib/auth";
 import { PrintButton } from "@/components/print-button";
 import { DocumentSignatureBlock } from "@/components/document-signature-block";
 import { getSigningState } from "@/lib/signatures";
@@ -81,7 +81,10 @@ export default async function PoPrintPage({
     );
   }
 
-  if (!signingState.fullySigned) {
+  // A full Admin may print / download a PO before it is fully signed; the copy
+  // is marked unsigned. Everyone else waits for every signature.
+  const unsignedCopy = !signingState.fullySigned;
+  if (unsignedCopy && !canManageUsers(profile)) {
     return (
       <div className="mx-auto max-w-lg py-16 text-center">
         <p className="text-lg font-semibold text-amber-700">Cannot print this PO</p>
@@ -174,6 +177,11 @@ export default async function PoPrintPage({
         </div>
       )}
 
+      {unsignedCopy && (
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-700">
+          Unsigned copy — awaiting {signingState.remainingCount} signature(s); not an approved purchase order
+        </p>
+      )}
       {po.superseded_by && (
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
           Superseded revision — not the current version of this PO
