@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Cog, Check, Lock, Unlock, Plus, Trash2, Send, Undo2, Pencil, Clock, AlertTriangle, Info } from "lucide-react";
+import { Cog, Check, Lock, Unlock, Plus, Trash2, Send, Undo2, Pencil, Clock, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
@@ -32,9 +32,10 @@ export function BomPanel({
   canWrite,
   canApprove,
   bomPolicy,
+  bomNotNeeded,
   everApproved,
   canSetPolicy,
-  setPolicyAction,
+  setNotNeededAction,
   generateAction,
   startCustomAction,
   approveAction,
@@ -53,11 +54,13 @@ export function BomPanel({
   /** Admin / Team Lead. A Factory Admin edits and submits but can't approve. */
   canApprove: boolean;
   /** 'required' = new project, locked until the BOM is approved once; 'legacy' = created before that rule. */
-  bomPolicy: "required" | "not_needed" | "legacy";
+  bomPolicy: "required" | "legacy";
+  /** "No BOM needed" ticked: POs, blocking and consumption work without a BOM. */
+  bomNotNeeded: boolean;
   everApproved: boolean;
-  /** Full Admin: may mark the project "No BOM needed" or undo it. */
+  /** Full Admin: may tick or untick "No BOM needed". */
   canSetPolicy: boolean;
-  setPolicyAction: Act;
+  setNotNeededAction: Act;
   generateAction: Act;
   startCustomAction: Act;
   approveAction: Act;
@@ -115,47 +118,44 @@ export function BomPanel({
     }
   }
 
-  const locked = bomPolicy === "required" && !everApproved;
+  const locked = bomPolicy === "required" && !everApproved && !bomNotNeeded;
 
   return (
     <div className="space-y-4">
-      {bomPolicy === "not_needed" ? (
-        <p className="flex flex-wrap items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-          <Info className="size-4 shrink-0" />
-          No BOM needed for this project — POs, blocking and consumption work without one.
-          {canSetPolicy && (
-            <button type="button" className="ml-auto font-medium text-primary hover:underline" onClick={() => run(setPolicyAction, { policy: "required" })}>
-              Require a BOM
-            </button>
-          )}
-        </p>
-      ) : locked ? (
-        <p className="flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <label
+        className={`flex w-fit items-center gap-2 text-sm ${canSetPolicy ? "cursor-pointer" : "cursor-not-allowed text-muted-foreground"}`}
+        title={canSetPolicy ? undefined : "Only an Admin can change this"}
+      >
+        <input
+          type="checkbox"
+          className="size-4 rounded border-input"
+          checked={bomNotNeeded}
+          disabled={!canSetPolicy || busy}
+          onChange={(e) =>
+            run(
+              setNotNeededAction,
+              { not_needed: String(e.target.checked) },
+              e.target.checked
+                ? "Mark this project as not needing a BOM? POs, blocking and consumption will work without one."
+                : bomPolicy === "required" && !everApproved
+                  ? "Untick? This project will need an approved BOM again before any PO, blocking or consumption."
+                  : undefined,
+            )
+          }
+        />
+        <span className="font-medium">No BOM needed</span>
+        <span className="text-muted-foreground">— for consumables, fixed assets and other internal projects</span>
+      </label>
+
+      {bomNotNeeded ? null : locked ? (
+        <p className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <Lock className="size-4 shrink-0" />
           This project needs an approved BOM before any PO can be raised, stock blocked or consumed for it.
-          {canSetPolicy && (
-            <button
-              type="button"
-              className="ml-auto font-medium text-primary hover:underline"
-              onClick={() => run(setPolicyAction, { policy: "not_needed" }, "Mark this project as not needing a BOM? POs, blocking and consumption will work without one.")}
-            >
-              No BOM needed
-            </button>
-          )}
         </p>
       ) : bomPolicy === "legacy" && !bom ? (
-        <p className="flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <AlertTriangle className="size-4 shrink-0" />
           This project has no BOM. Add one so orders, blocking and consumption can be checked against it.
-          {canSetPolicy && (
-            <button
-              type="button"
-              className="ml-auto font-medium text-primary hover:underline"
-              onClick={() => run(setPolicyAction, { policy: "not_needed" }, "Mark this project as not needing a BOM? The reminder goes away.")}
-            >
-              No BOM needed
-            </button>
-          )}
         </p>
       ) : null}
 

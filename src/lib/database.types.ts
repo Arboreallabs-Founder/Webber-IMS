@@ -2725,6 +2725,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          bom_not_needed: boolean
           bom_policy: string
           created_at: string
           created_by: string | null
@@ -2740,6 +2741,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          bom_not_needed?: boolean
           bom_policy?: string
           created_at?: string
           created_by?: string | null
@@ -2755,6 +2757,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          bom_not_needed?: boolean
           bom_policy?: string
           created_at?: string
           created_by?: string | null

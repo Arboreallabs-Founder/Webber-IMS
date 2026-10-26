@@ -31,7 +31,7 @@ import {
   submitBom,
   withdrawBom,
   sendBackBom,
-  setBomPolicy,
+  setBomNotNeeded,
   addManualBomLine,
   removeBomLine,
   updateProjectStatus,
@@ -420,10 +420,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           components={components ?? []}
           canWrite={canWrite}
           canApprove={canApproveBom(profile)}
-          bomPolicy={project.bom_policy as "required" | "not_needed" | "legacy"}
+          bomPolicy={project.bom_policy as "required" | "legacy"}
+          bomNotNeeded={project.bom_not_needed}
           everApproved={!!bom?.first_approved_at}
           canSetPolicy={canManageUsers(profile)}
-          setPolicyAction={setBomPolicy}
+          setNotNeededAction={setBomNotNeeded}
           generateAction={generateBom}
           startCustomAction={startCustomBom}
           approveAction={approveBom}

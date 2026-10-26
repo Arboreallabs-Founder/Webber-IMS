@@ -33,16 +33,16 @@ export async function updateProjectStatus(fd: FormData): Promise<ActionResult> {
 
 // ---------- does this project need a BOM? ----------
 // New projects need an approved BOM before POs, blocking or consumption (the
-// database enforces it). A full Admin can mark a project "No BOM needed" —
-// consumables, fixed assets and other internal projects — or undo that.
-export async function setBomPolicy(fd: FormData): Promise<ActionResult> {
+// database enforces it). A full Admin can tick "No BOM needed" — consumables,
+// fixed assets and other internal projects — or untick it again.
+export async function setBomNotNeeded(fd: FormData): Promise<ActionResult> {
   const p = await getProfile();
   if (!canManageUsers(p)) return { error: "Only an Admin can change whether a project needs a BOM." };
   const project_id = String(fd.get("project_id") ?? "");
-  const policy = String(fd.get("policy") ?? "");
-  if (!project_id || !["required", "not_needed"].includes(policy)) return { error: "Missing fields." };
+  if (!project_id) return { error: "Missing project." };
+  const notNeeded = fd.get("not_needed") === "true";
   const supabase = await createClient();
-  const { error } = await supabase.from("projects").update({ bom_policy: policy }).eq("id", project_id);
+  const { error } = await supabase.from("projects").update({ bom_not_needed: notNeeded }).eq("id", project_id);
   if (error) return { error: error.message };
   revalidate(project_id);
   return { ok: true };
