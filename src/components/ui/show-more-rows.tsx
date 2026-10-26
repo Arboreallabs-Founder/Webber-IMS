@@ -12,9 +12,10 @@ const LIMIT = 5;
  * the title or "Show more" reveals the full list; "Show less" goes back to 5.
  * Works on whatever the child renders, so panels don't each need paging
  * state. Rows are counted from the DOM and recounted when the child
- * re-renders (rows added or removed).
+ * re-renders (rows added or removed). Without a title (e.g. inside a tab that
+ * already names the section) only the Show more / Show less button shows.
  */
-export function ShowMoreRows({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
+export function ShowMoreRows({ id, title, children }: { id?: string; title?: string; children: React.ReactNode }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = React.useState(false);
   const [rowCount, setRowCount] = React.useState(0);
@@ -36,8 +37,8 @@ export function ShowMoreRows({ id, title, children }: { id?: string; title: stri
   const toggle = () => hidden > 0 && setExpanded((v) => !v);
 
   return (
-    <section id={id} className="mt-8 first:mt-0">
-      <button
+    <section id={id} className={title ? "mt-8 first:mt-0" : undefined}>
+      {title && <button
         type="button"
         onClick={toggle}
         className={cn("flex w-full items-center gap-2 border-b border-border pb-2 text-left", hidden > 0 ? "cursor-pointer" : "cursor-default")}
@@ -49,10 +50,10 @@ export function ShowMoreRows({ id, title, children }: { id?: string; title: stri
             {expanded ? `Showing all ${rowCount} · click to collapse` : `Showing ${LIMIT} of ${rowCount} · click to expand`}
           </span>
         )}
-      </button>
+      </button>}
       <div
         ref={ref}
-        className={cn("pt-4", !expanded && "[&_tbody>tr:nth-child(n+6)]:hidden [&_[data-row-list]>*:nth-child(n+6)]:hidden")}
+        className={cn(title && "pt-4", !expanded && "[&_tbody>tr:nth-child(n+6)]:hidden [&_[data-row-list]>*:nth-child(n+6)]:hidden")}
       >
         {children}
       </div>

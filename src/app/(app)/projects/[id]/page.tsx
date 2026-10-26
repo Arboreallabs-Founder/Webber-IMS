@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { FileSpreadsheet } from "lucide-react";
-import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ShowMoreRows } from "@/components/ui/show-more-rows";
 import { formatDate, formatINR, projectLabel } from "@/lib/utils";
 import { LineItemEditor, type VariantParam } from "./line-item-editor";
@@ -19,6 +18,7 @@ import { StockStatusPanel, type StockStatusRow } from "./stock-status-panel";
 import { JobWorkPanel, type JwStockRow, type JwOrderRow } from "./job-work-panel";
 import { ShortfallPanel } from "./shortfall-panel";
 import { PhaseBanner } from "./phase-banner";
+import { ProjectTabs } from "./project-tabs";
 import { SitePurchaseForm } from "./site-purchase-form";
 import { FinishedGoodsForm } from "./finished-goods-form";
 import {
@@ -392,96 +392,133 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </Card>
       )}
 
-      <ShowMoreRows id="line-items" title="Line items (model + variant)">
-        <LineItemEditor
-          projectId={id}
-          products={products ?? []}
-          paramsByProduct={paramsByProduct}
-          lineItems={liRows}
-          canWrite={canWrite}
-          addAction={addLineItem}
-          removeAction={removeLineItem}
-        />
-        </ShowMoreRows>
-
-      <ShowMoreRows id="bom" title="Bill of Materials">
-        <BomPanel
-          projectId={id}
-          bom={bom ? {
-            id: bom.id,
-            status: bom.status,
-            approved_at: bom.approved_at,
-            approved_by_name: bom.approved_by ? personName.get(bom.approved_by) ?? null : null,
-            submitted_at: bom.submitted_at,
-            submitted_by_name: bom.submitted_by ? personName.get(bom.submitted_by) ?? null : null,
-            review_note: bom.review_note,
-          } : null}
-          lines={bomLines}
-          components={components ?? []}
-          canWrite={canWrite}
-          canApprove={canApproveBom(profile)}
-          bomPolicy={project.bom_policy as "required" | "legacy"}
-          bomNotNeeded={project.bom_not_needed}
-          everApproved={!!bom?.first_approved_at}
-          canSetPolicy={canManageUsers(profile)}
-          setNotNeededAction={setBomNotNeeded}
-          generateAction={generateBom}
-          startCustomAction={startCustomBom}
-          approveAction={approveBom}
-          unapproveAction={unapproveBom}
-          submitAction={submitBom}
-          withdrawAction={withdrawBom}
-          sendBackAction={sendBackBom}
-          addManualAction={addManualBomLine}
-          removeLineAction={removeBomLine}
-        />
-        </ShowMoreRows>
-
-      {jwStockRows.length > 0 && (
-        <ShowMoreRows id="job-work" title="Job work">
-            <JobWorkPanel projectId={id} rows={jwStockRows} orders={jwOrderRows} canWrite={canWrite} />
-          </ShowMoreRows>
-      )}
-
-      <ShowMoreRows id="stock-status" title="Stock status & blocking">
-        <StockStatusPanel
-          projectId={id}
-          bomId={bom?.id ?? null}
-          bomApproved={bom?.status === "approved"}
-          rows={stockStatusRows}
-          allJobWork={allJobWork}
-          canWrite={canWrite}
-          blockAction={blockStockForBom}
-        />
-        </ShowMoreRows>
-
-      <ShowMoreRows id="issued" title="Materials issued"><IssuedPanel rows={issuedRows} /></ShowMoreRows>
-
-      <ShowMoreRows id="shortfall" title="Stock check & shortfall"><ShortfallPanel projectId={id} rows={shortfallRows} canProcure={canWrite} /></ShowMoreRows>
-
-      <CollapsibleSection id="site-purchase" title="Site purchase" hint="Click to expand">
-        <SitePurchaseForm
-          projectId={id}
-          bomApproved={bom?.status === "approved"}
-          components={components ?? []}
-          vendors={vendors ?? []}
-          showUnitCost={canSeeFinancials(profile?.role)}
-          action={logSitePurchase}
-        />
-      </CollapsibleSection>
-
-      {canWrite && (
-        <CollapsibleSection id="finished-goods" title="Finished goods" hint="Click to expand">
-          <FinishedGoodsForm
-            projectId={id}
-            bomApproved={bom?.status === "approved"}
-            hasConsumption={Number(costing?.consumed_value ?? 0) > 0}
-            lineItems={liRows}
-            products={(products ?? []).map((p) => ({ id: p.id, label: `${p.sku_code} — ${p.model_name}` }))}
-            action={logFinishedGoods}
-          />
-        </CollapsibleSection>
-      )}
+      <ProjectTabs
+        tabs={[
+          {
+            id: "line-items",
+            label: "Line items",
+            content: (
+              <ShowMoreRows>
+                <LineItemEditor
+                  projectId={id}
+                  products={products ?? []}
+                  paramsByProduct={paramsByProduct}
+                  lineItems={liRows}
+                  canWrite={canWrite}
+                  addAction={addLineItem}
+                  removeAction={removeLineItem}
+                />
+              </ShowMoreRows>
+            ),
+          },
+          {
+            id: "bom",
+            label: "Bill of Materials",
+            content: (
+              <ShowMoreRows>
+                <BomPanel
+                  projectId={id}
+                  bom={bom ? {
+                    id: bom.id,
+                    status: bom.status,
+                    approved_at: bom.approved_at,
+                    approved_by_name: bom.approved_by ? personName.get(bom.approved_by) ?? null : null,
+                    submitted_at: bom.submitted_at,
+                    submitted_by_name: bom.submitted_by ? personName.get(bom.submitted_by) ?? null : null,
+                    review_note: bom.review_note,
+                  } : null}
+                  lines={bomLines}
+                  components={components ?? []}
+                  canWrite={canWrite}
+                  canApprove={canApproveBom(profile)}
+                  bomPolicy={project.bom_policy as "required" | "legacy"}
+                  bomNotNeeded={project.bom_not_needed}
+                  everApproved={!!bom?.first_approved_at}
+                  canSetPolicy={canManageUsers(profile)}
+                  setNotNeededAction={setBomNotNeeded}
+                  generateAction={generateBom}
+                  startCustomAction={startCustomBom}
+                  approveAction={approveBom}
+                  unapproveAction={unapproveBom}
+                  submitAction={submitBom}
+                  withdrawAction={withdrawBom}
+                  sendBackAction={sendBackBom}
+                  addManualAction={addManualBomLine}
+                  removeLineAction={removeBomLine}
+                />
+              </ShowMoreRows>
+            ),
+          },
+          ...(jwStockRows.length > 0
+            ? [{
+                id: "job-work",
+                label: "Job work",
+                content: (
+                  <ShowMoreRows>
+                    <JobWorkPanel projectId={id} rows={jwStockRows} orders={jwOrderRows} canWrite={canWrite} />
+                  </ShowMoreRows>
+                ),
+              }]
+            : []),
+          {
+            id: "stock-status",
+            label: "Stock status & blocking",
+            content: (
+              <ShowMoreRows>
+                <StockStatusPanel
+                  projectId={id}
+                  bomId={bom?.id ?? null}
+                  bomApproved={bom?.status === "approved"}
+                  rows={stockStatusRows}
+                  allJobWork={allJobWork}
+                  canWrite={canWrite}
+                  blockAction={blockStockForBom}
+                />
+              </ShowMoreRows>
+            ),
+          },
+          {
+            id: "issued",
+            label: "Materials issued",
+            content: <ShowMoreRows><IssuedPanel rows={issuedRows} /></ShowMoreRows>,
+          },
+          {
+            id: "shortfall",
+            label: "Stock check & shortfall",
+            content: <ShowMoreRows><ShortfallPanel projectId={id} rows={shortfallRows} canProcure={canWrite} /></ShowMoreRows>,
+          },
+          {
+            id: "site-purchase",
+            label: "Site purchase",
+            content: (
+              <SitePurchaseForm
+                projectId={id}
+                bomApproved={bom?.status === "approved"}
+                components={components ?? []}
+                vendors={vendors ?? []}
+                showUnitCost={canSeeFinancials(profile?.role)}
+                action={logSitePurchase}
+              />
+            ),
+          },
+          ...(canWrite
+            ? [{
+                id: "finished-goods",
+                label: "Finished goods",
+                content: (
+                  <FinishedGoodsForm
+                    projectId={id}
+                    bomApproved={bom?.status === "approved"}
+                    hasConsumption={Number(costing?.consumed_value ?? 0) > 0}
+                    lineItems={liRows}
+                    products={(products ?? []).map((p) => ({ id: p.id, label: `${p.sku_code} — ${p.model_name}` }))}
+                    action={logFinishedGoods}
+                  />
+                ),
+              }]
+            : []),
+        ]}
+      />
     </div>
   );
 }
