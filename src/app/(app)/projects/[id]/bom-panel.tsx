@@ -58,7 +58,7 @@ export function BomPanel({
   /** "No BOM needed" ticked: POs, blocking and consumption work without a BOM. */
   bomNotNeeded: boolean;
   everApproved: boolean;
-  /** Full Admin: may tick or untick "No BOM needed". */
+  /** Full Admin: sees and may tick or untick "No BOM needed" (hidden from everyone else). */
   canSetPolicy: boolean;
   setNotNeededAction: Act;
   generateAction: Act;
@@ -122,30 +122,29 @@ export function BomPanel({
 
   return (
     <div className="space-y-4">
-      <label
-        className={`flex w-fit items-center gap-2 text-sm ${canSetPolicy ? "cursor-pointer" : "cursor-not-allowed text-muted-foreground"}`}
-        title={canSetPolicy ? undefined : "Only an Admin can change this"}
-      >
-        <input
-          type="checkbox"
-          className="size-4 rounded border-input"
-          checked={bomNotNeeded}
-          disabled={!canSetPolicy || busy}
-          onChange={(e) =>
-            run(
-              setNotNeededAction,
-              { not_needed: String(e.target.checked) },
-              e.target.checked
-                ? "Mark this project as not needing a BOM? POs, blocking and consumption will work without one."
-                : bomPolicy === "required" && !everApproved
-                  ? "Untick? This project will need an approved BOM again before any PO, blocking or consumption."
-                  : undefined,
-            )
-          }
-        />
-        <span className="font-medium">No BOM needed</span>
-        <span className="text-muted-foreground">— for consumables, fixed assets and other internal projects</span>
-      </label>
+      {canSetPolicy && (
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="size-4 rounded border-input"
+            checked={bomNotNeeded}
+            disabled={busy}
+            onChange={(e) =>
+              run(
+                setNotNeededAction,
+                { not_needed: String(e.target.checked) },
+                e.target.checked
+                  ? "Mark this project as not needing a BOM? POs, blocking and consumption will work without one."
+                  : bomPolicy === "required" && !everApproved
+                    ? "Untick? This project will need an approved BOM again before any PO, blocking or consumption."
+                    : undefined,
+              )
+            }
+          />
+          <span className="font-medium">No BOM needed</span>
+          <span className="text-muted-foreground">— for consumables, fixed assets and other internal projects</span>
+        </label>
+      )}
 
       {bomNotNeeded ? null : locked ? (
         <p className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
