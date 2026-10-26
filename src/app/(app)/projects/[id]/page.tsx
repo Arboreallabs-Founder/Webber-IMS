@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile, canWriteMasters, canSeeFinancials, canApproveBom, canManageUsers, requirePathAccess } from "@/lib/auth";
 import { getVendors, getComponentsFull, getCustomers } from "@/lib/masters-data";
@@ -363,6 +363,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   // ---- Dispatch to client: open units, line items left to log, and past dispatches ----
   const finance = canSeeFinancials(profile?.role);
+  // Missing-BOM warning for the summary box (the BOM tab shows the same, with the controls).
+  const bomNotice = project.bom_not_needed
+    ? null
+    : project.bom_policy === "required" && !bom?.first_approved_at
+      ? "This project needs an approved BOM before any PO can be raised, stock blocked or consumed for it."
+      : project.bom_policy === "legacy" && !bom
+        ? "This project has no BOM. Add one so orders, blocking and consumption can be checked against it."
+        : null;
   const fgLabel = (fg: { custom_name: string | null; product_id: string | null }) =>
     fg.custom_name ?? (fg.product_id ? productLabel.get(fg.product_id) : null) ?? "—";
   const openFinishedGoods = (projectFgs ?? [])
@@ -441,28 +449,31 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       />
 
       <Card className="mb-8">
-        <CardContent className="grid grid-cols-2 gap-4 p-5 text-sm sm:grid-cols-4">
-          <Info label="Order date" value={formatDate(project.order_date)} />
-          <Info label="Delivery date" value={formatDate(project.delivery_date)} />
-          <Info label="Customer PO" value={project.customer_po_number || "—"} />
-          {canSeeFinancials(profile?.role) && (
-            <Info label="Budgeted Company Cost" value={formatINR(project.customer_po_value)} />
+        <CardContent className="space-y-4 p-5 text-sm">
+          {bomNotice && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+              <AlertTriangle className="size-4 shrink-0" />
+              <span>{bomNotice}</span>
+              <Link href="#bom" className="ml-auto font-medium text-primary hover:underline">Go to BOM →</Link>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Info label="Order date" value={formatDate(project.order_date)} />
+            <Info label="Delivery date" value={formatDate(project.delivery_date)} />
+            <Info label="Customer PO" value={project.customer_po_number || "—"} />
+            {finance && <Info label="Budgeted Company Cost" value={formatINR(project.customer_po_value)} />}
+          </div>
+          {finance && costing && (
+            <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 sm:grid-cols-3 lg:grid-cols-5">
+              <Info label="Ordered" value={formatINR(costing.ordered_value)} />
+              <Info label="Received" value={formatINR(costing.received_value)} />
+              <Info label="WIP" value={formatINR(costing.wip_value)} />
+              <Info label="Dispatched" value={formatINR(costing.dispatched_value)} />
+              <Info label="Not yet in WIP" value={formatINR(Math.max(Number(costing.received_value ?? 0) - Number(costing.consumed_value ?? 0), 0))} />
+            </div>
           )}
         </CardContent>
       </Card>
-
-      {canSeeFinancials(profile?.role) && costing && (
-        <Card className="mb-8">
-          <CardContent className="grid grid-cols-2 gap-4 p-5 text-sm sm:grid-cols-3 lg:grid-cols-6">
-            <Info label="Budgeted Company Cost" value={formatINR(costing.customer_po_value)} />
-            <Info label="Ordered" value={formatINR(costing.ordered_value)} />
-            <Info label="Received" value={formatINR(costing.received_value)} />
-            <Info label="WIP" value={formatINR(costing.wip_value)} />
-            <Info label="Dispatched" value={formatINR(costing.dispatched_value)} />
-            <Info label="Not yet in WIP" value={formatINR(Math.max(Number(costing.received_value ?? 0) - Number(costing.consumed_value ?? 0), 0))} />
-          </CardContent>
-        </Card>
-      )}
 
       <ProjectTabs
         tabs={[
