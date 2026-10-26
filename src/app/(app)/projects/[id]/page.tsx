@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { FileSpreadsheet } from "lucide-react";
-import { ShowMoreRows } from "@/components/ui/show-more-rows";
 import { formatDate, formatINR, projectLabel } from "@/lib/utils";
 import { LineItemEditor, type VariantParam } from "./line-item-editor";
 import { BomPanel } from "./bom-panel";
@@ -398,55 +397,51 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             id: "line-items",
             label: "Line items",
             content: (
-              <ShowMoreRows>
-                <LineItemEditor
-                  projectId={id}
-                  products={products ?? []}
-                  paramsByProduct={paramsByProduct}
-                  lineItems={liRows}
-                  canWrite={canWrite}
-                  addAction={addLineItem}
-                  removeAction={removeLineItem}
-                />
-              </ShowMoreRows>
+              <LineItemEditor
+                projectId={id}
+                products={products ?? []}
+                paramsByProduct={paramsByProduct}
+                lineItems={liRows}
+                canWrite={canWrite}
+                addAction={addLineItem}
+                removeAction={removeLineItem}
+              />
             ),
           },
           {
             id: "bom",
             label: "Bill of Materials",
             content: (
-              <ShowMoreRows>
-                <BomPanel
-                  projectId={id}
-                  bom={bom ? {
-                    id: bom.id,
-                    status: bom.status,
-                    approved_at: bom.approved_at,
-                    approved_by_name: bom.approved_by ? personName.get(bom.approved_by) ?? null : null,
-                    submitted_at: bom.submitted_at,
-                    submitted_by_name: bom.submitted_by ? personName.get(bom.submitted_by) ?? null : null,
-                    review_note: bom.review_note,
-                  } : null}
-                  lines={bomLines}
-                  components={components ?? []}
-                  canWrite={canWrite}
-                  canApprove={canApproveBom(profile)}
-                  bomPolicy={project.bom_policy as "required" | "legacy"}
-                  bomNotNeeded={project.bom_not_needed}
-                  everApproved={!!bom?.first_approved_at}
-                  canSetPolicy={canManageUsers(profile)}
-                  setNotNeededAction={setBomNotNeeded}
-                  generateAction={generateBom}
-                  startCustomAction={startCustomBom}
-                  approveAction={approveBom}
-                  unapproveAction={unapproveBom}
-                  submitAction={submitBom}
-                  withdrawAction={withdrawBom}
-                  sendBackAction={sendBackBom}
-                  addManualAction={addManualBomLine}
-                  removeLineAction={removeBomLine}
-                />
-              </ShowMoreRows>
+              <BomPanel
+                projectId={id}
+                bom={bom ? {
+                  id: bom.id,
+                  status: bom.status,
+                  approved_at: bom.approved_at,
+                  approved_by_name: bom.approved_by ? personName.get(bom.approved_by) ?? null : null,
+                  submitted_at: bom.submitted_at,
+                  submitted_by_name: bom.submitted_by ? personName.get(bom.submitted_by) ?? null : null,
+                  review_note: bom.review_note,
+                } : null}
+                lines={bomLines}
+                components={components ?? []}
+                canWrite={canWrite}
+                canApprove={canApproveBom(profile)}
+                bomPolicy={project.bom_policy as "required" | "legacy"}
+                bomNotNeeded={project.bom_not_needed}
+                everApproved={!!bom?.first_approved_at}
+                canSetPolicy={canManageUsers(profile)}
+                setNotNeededAction={setBomNotNeeded}
+                generateAction={generateBom}
+                startCustomAction={startCustomBom}
+                approveAction={approveBom}
+                unapproveAction={unapproveBom}
+                submitAction={submitBom}
+                withdrawAction={withdrawBom}
+                sendBackAction={sendBackBom}
+                addManualAction={addManualBomLine}
+                removeLineAction={removeBomLine}
+              />
             ),
           },
           ...(jwStockRows.length > 0
@@ -454,9 +449,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 id: "job-work",
                 label: "Job work",
                 content: (
-                  <ShowMoreRows>
-                    <JobWorkPanel projectId={id} rows={jwStockRows} orders={jwOrderRows} canWrite={canWrite} />
-                  </ShowMoreRows>
+                  <JobWorkPanel projectId={id} rows={jwStockRows} orders={jwOrderRows} canWrite={canWrite} />
                 ),
               }]
             : []),
@@ -464,28 +457,26 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             id: "stock-status",
             label: "Stock status & blocking",
             content: (
-              <ShowMoreRows>
-                <StockStatusPanel
-                  projectId={id}
-                  bomId={bom?.id ?? null}
-                  bomApproved={bom?.status === "approved"}
-                  rows={stockStatusRows}
-                  allJobWork={allJobWork}
-                  canWrite={canWrite}
-                  blockAction={blockStockForBom}
-                />
-              </ShowMoreRows>
+              <StockStatusPanel
+                projectId={id}
+                bomId={bom?.id ?? null}
+                bomApproved={bom?.status === "approved"}
+                rows={stockStatusRows}
+                allJobWork={allJobWork}
+                canWrite={canWrite}
+                blockAction={blockStockForBom}
+              />
             ),
           },
           {
             id: "issued",
             label: "Materials issued",
-            content: <ShowMoreRows><IssuedPanel rows={issuedRows} /></ShowMoreRows>,
+            content: <IssuedPanel rows={issuedRows} />,
           },
           {
             id: "shortfall",
             label: "Stock check & shortfall",
-            content: <ShowMoreRows><ShortfallPanel projectId={id} rows={shortfallRows} canProcure={canWrite} /></ShowMoreRows>,
+            content: <ShortfallPanel projectId={id} rows={shortfallRows} canProcure={canWrite} />,
           },
           {
             id: "site-purchase",
