@@ -11,7 +11,7 @@ export default async function TraceabilityPage() {
     <div>
       <PageHeader
         title="Traceability"
-        description="Scan a component's QR to see its full history — PO, supplier, job work, inspection (IRN), and consumption."
+        description="Scan a component's QR to see its full history — PO, supplier, job work, inspection (IRN), and consumption. Scan a finished good's QR to see the components in it."
       />
       <TraceabilityScanner lookupAction={lookupTraceability} finance={finance} />
     </div>

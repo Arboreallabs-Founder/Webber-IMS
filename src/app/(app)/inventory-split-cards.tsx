@@ -16,26 +16,38 @@ const DETAIL = {
   },
   wip: {
     title: "WIP by project",
-    description: "Already consumed into each project. Valued at PO rate.",
+    description: "Consumed into each project and still in the factory. Valued at PO rate.",
+  },
+  dispatched: {
+    title: "Dispatched by project",
+    description: "Consumed material that has gone to the client with its finished goods. Valued at PO rate.",
   },
 } as const;
+type Kind = keyof typeof DETAIL;
+const CARD_LABEL: Record<Kind, string> = { blocked: "Blocked inventory", wip: "WIP", dispatched: "Dispatched" };
 
 export function InventorySplitCards({
   open,
   blocked,
   wip,
+  dispatched,
   blockedByProject,
   wipByProject,
+  dispatchedByProject,
 }: {
   open: number;
   blocked: number;
   wip: number;
+  dispatched: number;
   blockedByProject: ProjectValue[];
   wipByProject: ProjectValue[];
+  dispatchedByProject: ProjectValue[];
 }) {
-  const [shown, setShown] = React.useState<"blocked" | "wip" | null>(null);
-  const rows = shown === "blocked" ? blockedByProject : shown === "wip" ? wipByProject : [];
-  const total = shown === "blocked" ? blocked : wip;
+  const [shown, setShown] = React.useState<Kind | null>(null);
+  const totals: Record<Kind, number> = { blocked, wip, dispatched };
+  const byProject: Record<Kind, ProjectValue[]> = { blocked: blockedByProject, wip: wipByProject, dispatched: dispatchedByProject };
+  const rows = shown ? byProject[shown] : [];
+  const total = shown ? totals[shown] : 0;
 
   return (
     <>
@@ -45,15 +57,15 @@ export function InventorySplitCards({
           <p className="mt-1 text-2xl font-semibold">{formatINR(open)}</p>
         </CardContent>
       </Card>
-      {(["blocked", "wip"] as const).map((k) => (
+      {(["blocked", "wip", "dispatched"] as const).map((k) => (
         <button key={k} type="button" onClick={() => setShown(k)} className="text-left">
           <Card className="h-full transition-colors hover:border-primary hover:bg-accent/40">
             <CardContent className="p-4">
               <p className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {k === "blocked" ? "Blocked inventory" : "WIP"}
+                {CARD_LABEL[k]}
                 <ChevronRight className="size-3.5" />
               </p>
-              <p className="mt-1 text-2xl font-semibold">{formatINR(k === "blocked" ? blocked : wip)}</p>
+              <p className="mt-1 text-2xl font-semibold">{formatINR(totals[k])}</p>
             </CardContent>
           </Card>
         </button>

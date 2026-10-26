@@ -471,3 +471,63 @@ export async function removeBomLine(fd: FormData): Promise<ActionResult> {
   revalidate(project_id);
   return { ok: true };
 }
+
+// ---------- dispatch to client ----------
+// Moves consumed material (WIP) to "dispatched" together with the finished
+// good(s) it went into. No stock moves — the lots are already consumed; the
+// create_dispatch RPC ties each line to the lots it came from and refuses
+// more than is still in WIP for the project.
+export async function dispatchToClient(fd: FormData): Promise<ActionResult> {
+  const p = await planner();
+  if (!p) return { error: "Only Admin / Team Lead can dispatch to the client." };
+  const project_id = String(fd.get("project_id") ?? "");
+  let items: { component_id: string; qty: number }[] = [];
+  let fgIds: string[] = [];
+  let newFg: Record<string, unknown> | null = null;
+  try {
+    items = JSON.parse(String(fd.get("items") ?? "[]"));
+    fgIds = JSON.parse(String(fd.get("fg_ids") ?? "[]"));
+    newFg = JSON.parse(String(fd.get("new_fg") ?? "null"));
+  } catch {
+    return { error: "Invalid dispatch details." };
+  }
+  if (!project_id) return { error: "Missing project." };
+  if (items.length === 0) return { error: "Pick at least one component." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_dispatch", {
+    p_project: project_id,
+    p_items: items,
+    p_fg_ids: fgIds.length ? fgIds : null,
+    p_new_fg: newFg,
+    p_date: String(fd.get("dispatch_date") ?? "") || null,
+    p_challan: String(fd.get("challan_no") ?? "") || null,
+    p_vehicle: String(fd.get("vehicle_no") ?? "") || null,
+  });
+  if (error) return { error: error.message };
+  const res = data as { dispatch_no?: string; serials?: string[] };
+  revalidate(project_id);
+  revalidatePath("/finished-goods");
+  revalidatePath("/");
+  return {
+    ok: true,
+    message: `Dispatched as ${res.dispatch_no}${res.serials?.length ? ` with ${res.serials.join(", ")}` : ""}.`,
+  };
+}
+
+/** Full Admin only: the components go back to WIP and the units back to "ready". */
+export async function cancelDispatch(fd: FormData): Promise<ActionResult> {
+  const p = await getProfile();
+  if (!canManageUsers(p)) return { error: "Only an Admin can cancel a dispatch." };
+  const dispatch_id = String(fd.get("dispatch_id") ?? "");
+  const project_id = String(fd.get("project_id") ?? "");
+  const reason = String(fd.get("reason") ?? "").trim();
+  if (!reason) return { error: "Give a reason for cancelling." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancel_dispatch", { p_dispatch: dispatch_id, p_reason: reason });
+  if (error) return { error: error.message };
+  revalidate(project_id);
+  revalidatePath("/finished-goods");
+  revalidatePath("/");
+  return { ok: true };
+}

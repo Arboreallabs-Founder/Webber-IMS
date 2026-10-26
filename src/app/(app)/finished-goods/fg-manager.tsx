@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/select";
@@ -10,7 +11,8 @@ import { formatDate } from "@/lib/utils";
 import { updateFgStatus, type ActionResult } from "./actions";
 
 type Fg = { id: string; serial_no: string; product_label: string; status: string; variant_text: string; created_at: string };
-const STATUSES = ["in_production", "ready", "dispatched"];
+// "dispatched" is set only by dispatching from the project's Materials issued tab.
+const STATUSES = ["in_production", "ready"];
 
 export function FgManager({
   units,
@@ -61,17 +63,19 @@ export function FgManager({
           ) : (
             filteredUnits.map((u) => (
               <TableRow key={u.id}>
-                <TableCell className="font-mono text-xs">{u.serial_no}</TableCell>
+                <TableCell className="font-mono text-xs">
+                  <Link href={`/finished-goods/${u.id}`} className="text-primary hover:underline">{u.serial_no}</Link>
+                </TableCell>
                 <TableCell><QrCode value={u.serial_no} size={48} /></TableCell>
                 <TableCell className="font-medium">{u.product_label}</TableCell>
                 <TableCell className="text-muted-foreground">{u.variant_text || "—"}</TableCell>
                 <TableCell>
-                  {canWrite ? (
+                  {canWrite && u.status !== "dispatched" ? (
                     <Select value={u.status} disabled={busy} className="max-w-[160px]"
                       onChange={(e) => { const fd = new FormData(); fd.set("id", u.id); fd.set("status", e.target.value); run(updateFgStatus, fd); }}>
                       {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                     </Select>
-                  ) : u.status}
+                  ) : u.status.replace("_", " ")}
                 </TableCell>
                 <TableCell className="text-muted-foreground">{formatDate(u.created_at)}</TableCell>
               </TableRow>

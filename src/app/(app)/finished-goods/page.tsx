@@ -32,7 +32,7 @@ export default async function FinishedGoodsPage() {
 
   return (
     <div>
-      <PageHeader title="Finished Goods" description="Completed units with a serial QR. Status: in production → ready → dispatched. Logged from each project's page." />
+      <PageHeader title="Finished Goods" description="Completed units with a serial QR. Status: in production → ready → dispatched (set by dispatching from the project's Materials issued tab). Click a serial to see its components." />
       <FgManager units={units} canWrite={canWrite} />
     </div>
   );

@@ -36,8 +36,9 @@ export default async function DashboardPage() {
   const c = (r: { count: number | null }) => r.count ?? 0;
   const overdueLines = overdue.data ?? [];
   const overduePoCount = new Set(overdueLines.map((r) => r.po_id)).size;
-  // WIP = everything consumed into projects; same figure as the costing view's consumed_value.
-  const wipValue = finance ? (costingRes.data ?? []).reduce((s, r) => s + Number(r.consumed_value ?? 0), 0) : null;
+  // WIP = consumed into projects and not yet dispatched to the client (costing view's wip_value).
+  const wipValue = finance ? (costingRes.data ?? []).reduce((s, r) => s + Number(r.wip_value ?? 0), 0) : null;
+  const dispatchedValue = finance ? (costingRes.data ?? []).reduce((s, r) => s + Number(r.dispatched_value ?? 0), 0) : null;
 
   const labelFor = (projectId: string, projectNo?: string | null) => {
     const no = projectNo ?? projectNoById.get(projectId) ?? "—";
@@ -45,10 +46,13 @@ export default async function DashboardPage() {
   };
   const projectNoById = new Map((projectsRes.data ?? []).map((p) => [p.id, p.project_no]));
   const byValueDesc = (a: ProjectValue, b: ProjectValue) => b.value - a.value;
-  const wipByProject: ProjectValue[] = (costingRes.data ?? [])
-    .filter((r) => r.project_id && Number(r.consumed_value ?? 0) > 0.5)
-    .map((r) => ({ projectId: r.project_id!, label: labelFor(r.project_id!, r.project_no), value: Number(r.consumed_value) }))
-    .sort(byValueDesc);
+  const valueByProject = (key: "wip_value" | "dispatched_value"): ProjectValue[] =>
+    (costingRes.data ?? [])
+      .filter((r) => r.project_id && Number(r[key] ?? 0) > 0.5)
+      .map((r) => ({ projectId: r.project_id!, label: labelFor(r.project_id!, r.project_no), value: Number(r[key]) }))
+      .sort(byValueDesc);
+  const wipByProject = valueByProject("wip_value");
+  const dispatchedByProject = valueByProject("dispatched_value");
   const blockedByProject: ProjectValue[] = onhandRes
     ? [...onhandRes.blockedByProject].filter(([, v]) => v > 0.5).map(([id, v]) => ({ projectId: id, label: labelFor(id), value: v })).sort(byValueDesc)
     : [];
@@ -68,23 +72,25 @@ export default async function DashboardPage() {
   ];
 
   const costingRows = (costingRes.data ?? [])
-    .map((r) => ({ ...r, consumed_value: Number(r.consumed_value ?? 0), ordered_value: Number(r.ordered_value ?? 0) }))
+    .map((r) => ({ ...r, wip_value: Number(r.wip_value ?? 0), consumed_value: Number(r.consumed_value ?? 0), ordered_value: Number(r.ordered_value ?? 0) }))
     .filter((r) => r.ordered_value > 0 || r.consumed_value > 0)
-    .sort((a, b) => b.consumed_value - a.consumed_value)
+    .sort((a, b) => b.wip_value - a.wip_value)
     .slice(0, 8);
 
   return (
     <div>
       <PageHeader title={`Welcome${profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}`} description="Live operations snapshot, straight off the ledger." />
 
-      <section className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${onhandRes ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
-        {onhandRes && wipValue !== null && (
+      <section className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${onhandRes ? "lg:grid-cols-4 xl:grid-cols-7" : "lg:grid-cols-5"}`}>
+        {onhandRes && wipValue !== null && dispatchedValue !== null && (
           <InventorySplitCards
             open={onhandRes.open}
             blocked={onhandRes.blocked}
             wip={wipValue}
+            dispatched={dispatchedValue}
             blockedByProject={blockedByProject}
             wipByProject={wipByProject}
+            dispatchedByProject={dispatchedByProject}
           />
         )}
         {stats.map((s) => (
@@ -138,7 +144,7 @@ export default async function DashboardPage() {
                       </TableCell>
                       <TableCell>{formatINR(r.customer_po_value)}</TableCell>
                       <TableCell>{formatINR(r.ordered_value)}</TableCell>
-                      <TableCell>{formatINR(r.consumed_value)}</TableCell>
+                      <TableCell>{formatINR(r.wip_value)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

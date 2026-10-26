@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { QrScanner } from "@/components/qr-scanner";
 import { TraceabilityResult } from "./traceability-result";
 import type { Traceability } from "@/lib/traceability";
@@ -9,9 +10,10 @@ export function TraceabilityScanner({
   lookupAction,
   finance,
 }: {
-  lookupAction: (lotCode: string) => Promise<{ ok?: true; error?: string; data?: unknown }>;
+  lookupAction: (lotCode: string) => Promise<{ ok?: true; error?: string; data?: unknown; redirect?: string }>;
   finance: boolean;
 }) {
+  const router = useRouter();
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<Traceability | null>(null);
@@ -23,6 +25,7 @@ export function TraceabilityScanner({
     const res = await lookupAction(code);
     setPending(false);
     if (res?.error) { setError(res.error); return; }
+    if (res?.redirect) { router.push(res.redirect); return; }
     setResult(res.data as Traceability);
   }
 

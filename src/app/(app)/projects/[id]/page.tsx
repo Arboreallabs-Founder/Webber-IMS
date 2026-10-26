@@ -13,6 +13,7 @@ import { formatDate, formatINR, projectLabel } from "@/lib/utils";
 import { LineItemEditor, type VariantParam } from "./line-item-editor";
 import { BomPanel } from "./bom-panel";
 import { IssuedPanel } from "./issued-panel";
+import { DispatchedPanel, type DispatchRow } from "./dispatched-panel";
 import { StockStatusPanel, type StockStatusRow } from "./stock-status-panel";
 import { JobWorkPanel, type JwStockRow, type JwOrderRow } from "./job-work-panel";
 import { ShortfallPanel } from "./shortfall-panel";
@@ -31,6 +32,8 @@ import {
   withdrawBom,
   sendBackBom,
   setBomNotNeeded,
+  dispatchToClient,
+  cancelDispatch,
   addManualBomLine,
   removeBomLine,
   updateProjectStatus,
@@ -70,6 +73,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     { data: shortfall },
     { data: consumption },
     { data: myJwOrders },
+    { data: dispatchedByComp },
+    { data: dispatchRecs },
+    { data: projectFgs },
   ] = await Promise.all([
     supabase.from("projects").select("*").eq("id", id).single(),
     supabase.from("products").select("id, sku_code, model_name").order("sku_code"),
@@ -80,7 +86,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     getVendors(),
     getCustomers(),
     supabase.from("v_project_costing")
-      .select("customer_po_value, ordered_value, received_value, consumed_value")
+      .select("customer_po_value, ordered_value, received_value, consumed_value, dispatched_value, wip_value")
       .eq("project_id", id)
       .maybeSingle(),
     supabase.from("v_project_shortfall")
@@ -91,6 +97,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       .select("id, jw_no, vendor_id, status, sent_date, expected_date")
       .eq("project_id", id)
       .order("created_at", { ascending: false }),
+    supabase.from("v_project_dispatched").select("component_id, dispatched_qty").eq("project_id", id),
+    supabase.from("dispatches")
+      .select("id, dispatch_no, dispatch_date, challan_no, vehicle_no, status, cancel_reason")
+      .eq("project_id", id)
+      .order("created_at", { ascending: false }),
+    supabase.from("finished_goods")
+      .select("id, serial_no, status, custom_name, product_id, project_line_item_id, dispatch_id")
+      .eq("project_id", id)
+      .order("serial_no"),
   ]);
   if (!project) notFound();
   const vendors = vendorsAll.filter((v) => v.is_active);
@@ -183,6 +198,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     if (!c.component_id) continue;
     issuedByComponent.set(c.component_id, Number(c.consumed_qty ?? 0));
   }
+  const dispatchedByComponent = new Map<string, number>();
+  for (const d of dispatchedByComp ?? []) {
+    if (d.component_id) dispatchedByComponent.set(d.component_id, Number(d.dispatched_qty ?? 0));
+  }
   const issuedComponentIds = new Set([...plannedByComponent.keys(), ...issuedByComponent.keys()]);
   const issuedRows = [...issuedComponentIds]
     .map((cid) => ({
@@ -190,6 +209,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       component_label: componentLabel.get(cid) ?? "—",
       planned: plannedByComponent.get(cid) ?? 0,
       issued: issuedByComponent.get(cid) ?? 0,
+      dispatched: dispatchedByComponent.get(cid) ?? 0,
       in_plan: plannedByComponent.has(cid),
     }))
     .sort((a, b) => (a.in_plan === b.in_plan ? a.component_label.localeCompare(b.component_label) : a.in_plan ? 1 : -1));
@@ -341,6 +361,58 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   bomLines = bomLines.map((l) => ({ ...l, component_label: withRaw(l.component_id, l.component_label) }));
   shortfallRows = shortfallRows.map((r) => ({ ...r, component_label: withRaw(r.component_id, r.component_label) }));
 
+  // ---- Dispatch to client: open units, line items left to log, and past dispatches ----
+  const finance = canSeeFinancials(profile?.role);
+  const fgLabel = (fg: { custom_name: string | null; product_id: string | null }) =>
+    fg.custom_name ?? (fg.product_id ? productLabel.get(fg.product_id) : null) ?? "—";
+  const openFinishedGoods = (projectFgs ?? [])
+    .filter((fg) => !fg.dispatch_id)
+    .map((fg) => ({ id: fg.id, serial_no: fg.serial_no, label: fgLabel(fg), status: fg.status }));
+  const loggedByLineItem = new Map<string, number>();
+  for (const fg of projectFgs ?? []) {
+    if (fg.project_line_item_id) loggedByLineItem.set(fg.project_line_item_id, (loggedByLineItem.get(fg.project_line_item_id) ?? 0) + 1);
+  }
+  const fgLineItems = liRows.map((li) => ({
+    id: li.id,
+    label: `${li.product_label}${li.variant_text ? ` (${li.variant_text})` : ""}`,
+    remaining: Math.max(li.quantity - (loggedByLineItem.get(li.id) ?? 0), 0),
+  }));
+  const dispatchIds = (dispatchRecs ?? []).map((d) => d.id);
+  const { data: dispatchLines } = dispatchIds.length
+    ? await supabase.from("dispatch_lines").select("dispatch_id, component_id, lot_id, qty").in("dispatch_id", dispatchIds)
+    : { data: [] };
+  const dispatchLotIds = [...new Set((dispatchLines ?? []).map((l) => l.lot_id))];
+  const { data: dispatchRates } = finance && dispatchLotIds.length
+    ? await supabase.from("v_lot_rates").select("lot_id, rate").in("lot_id", dispatchLotIds)
+    : { data: [] };
+  const rateByLot = new Map((dispatchRates ?? []).map((r) => [r.lot_id, Number(r.rate ?? 0)]));
+  const dispatchRows: DispatchRow[] = (dispatchRecs ?? [])
+    .map((d) => {
+      const byComp = new Map<string, { qty: number; value: number }>();
+      for (const l of (dispatchLines ?? []).filter((x) => x.dispatch_id === d.id)) {
+        const cur = byComp.get(l.component_id) ?? { qty: 0, value: 0 };
+        cur.qty += Number(l.qty);
+        cur.value += Number(l.qty) * (rateByLot.get(l.lot_id) ?? 0);
+        byComp.set(l.component_id, cur);
+      }
+      const lines = [...byComp]
+        .map(([cid, v]) => ({ component_label: componentLabel.get(cid) ?? "—", qty: v.qty, value: finance ? v.value : null }))
+        .sort((a, b) => a.component_label.localeCompare(b.component_label));
+      return {
+        id: d.id,
+        dispatch_no: d.dispatch_no,
+        dispatch_date: d.dispatch_date,
+        challan_no: d.challan_no,
+        vehicle_no: d.vehicle_no,
+        status: d.status as "dispatched" | "cancelled",
+        cancel_reason: d.cancel_reason,
+        units: (projectFgs ?? []).filter((fg) => fg.dispatch_id === d.id).map((fg) => ({ id: fg.id, serial_no: fg.serial_no, label: fgLabel(fg) })),
+        lines,
+        total_value: finance ? lines.reduce((sum, l) => sum + (l.value ?? 0), 0) : null,
+      };
+    })
+    .sort((a, b) => (a.status === b.status ? 0 : a.status === "dispatched" ? -1 : 1));
+
   return (
     <div>
       <Link href="/projects" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -381,11 +453,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
       {canSeeFinancials(profile?.role) && costing && (
         <Card className="mb-8">
-          <CardContent className="grid grid-cols-2 gap-4 p-5 text-sm sm:grid-cols-5">
+          <CardContent className="grid grid-cols-2 gap-4 p-5 text-sm sm:grid-cols-3 lg:grid-cols-6">
             <Info label="Budgeted Company Cost" value={formatINR(costing.customer_po_value)} />
             <Info label="Ordered" value={formatINR(costing.ordered_value)} />
             <Info label="Received" value={formatINR(costing.received_value)} />
-            <Info label="WIP" value={formatINR(costing.consumed_value)} />
+            <Info label="WIP" value={formatINR(costing.wip_value)} />
+            <Info label="Dispatched" value={formatINR(costing.dispatched_value)} />
             <Info label="Not yet in WIP" value={formatINR(Math.max(Number(costing.received_value ?? 0) - Number(costing.consumed_value ?? 0), 0))} />
           </CardContent>
         </Card>
@@ -471,7 +544,28 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           {
             id: "issued",
             label: "Materials issued",
-            content: <IssuedPanel rows={issuedRows} />,
+            content: (
+              <IssuedPanel
+                projectId={id}
+                rows={issuedRows}
+                canDispatch={canWrite}
+                openFinishedGoods={openFinishedGoods}
+                lineItems={fgLineItems}
+                dispatchAction={dispatchToClient}
+              />
+            ),
+          },
+          {
+            id: "dispatched",
+            label: "Dispatched",
+            content: (
+              <DispatchedPanel
+                projectId={id}
+                dispatches={dispatchRows}
+                canCancel={canManageUsers(profile)}
+                cancelAction={cancelDispatch}
+              />
+            ),
           },
           {
             id: "shortfall",

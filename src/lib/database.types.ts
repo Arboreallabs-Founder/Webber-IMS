@@ -845,8 +845,88 @@ export type Database = {
           },
         ]
       }
+      dispatch_lines: {
+        Row: {
+          component_id: string
+          created_at: string
+          created_by: string | null
+          dispatch_id: string
+          id: string
+          lot_id: string
+          qty: number
+        }
+        Insert: {
+          component_id: string
+          created_at?: string
+          created_by?: string | null
+          dispatch_id: string
+          id?: string
+          lot_id: string
+          qty: number
+        }
+        Update: {
+          component_id?: string
+          created_at?: string
+          created_by?: string | null
+          dispatch_id?: string
+          id?: string
+          lot_id?: string
+          qty?: number
+        }
+        Relationships: []
+      }
+      dispatches: {
+        Row: {
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          challan_no: string | null
+          created_at: string
+          created_by: string | null
+          dispatch_date: string
+          dispatch_no: string
+          id: string
+          project_id: string
+          status: string
+          updated_at: string | null
+          vehicle_no: string | null
+        }
+        Insert: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          challan_no?: string | null
+          created_at?: string
+          created_by?: string | null
+          dispatch_date?: string
+          dispatch_no: string
+          id?: string
+          project_id: string
+          status?: string
+          updated_at?: string | null
+          vehicle_no?: string | null
+        }
+        Update: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          challan_no?: string | null
+          created_at?: string
+          created_by?: string | null
+          dispatch_date?: string
+          dispatch_no?: string
+          id?: string
+          project_id?: string
+          status?: string
+          updated_at?: string | null
+          vehicle_no?: string | null
+        }
+        Relationships: []
+      }
       finished_goods: {
         Row: {
+          dispatch_id: string | null
+          project_id: string | null
           created_at: string
           created_by: string | null
           custom_name: string | null
@@ -859,6 +939,8 @@ export type Database = {
           variant_selections: Json | null
         }
         Insert: {
+          dispatch_id?: string | null
+          project_id?: string | null
           created_at?: string
           created_by?: string | null
           custom_name?: string | null
@@ -871,6 +953,8 @@ export type Database = {
           variant_selections?: Json | null
         }
         Update: {
+          dispatch_id?: string | null
+          project_id?: string | null
           created_at?: string
           created_by?: string | null
           custom_name?: string | null
@@ -4516,15 +4600,45 @@ export type Database = {
           },
         ]
       }
+      v_project_dispatched: {
+        Row: {
+          component_id: string | null
+          dispatched_qty: number | null
+          dispatched_value: number | null
+          project_id: string | null
+        }
+        Relationships: []
+      }
+      v_project_lot_consumed: {
+        Row: {
+          component_id: string | null
+          consumed_qty: number | null
+          first_at: string | null
+          lot_id: string | null
+          project_id: string | null
+        }
+        Relationships: []
+      }
+      v_project_lot_dispatched: {
+        Row: {
+          component_id: string | null
+          dispatched_qty: number | null
+          lot_id: string | null
+          project_id: string | null
+        }
+        Relationships: []
+      }
       v_project_costing: {
         Row: {
           consumed_value: number | null
           customer_po_value: number | null
+          dispatched_value: number | null
           ordered_value: number | null
           project_id: string | null
           project_no: string | null
           received_value: number | null
           status: Database["public"]["Enums"]["project_status"] | null
+          wip_value: number | null
         }
         Relationships: []
       }
@@ -4978,6 +5092,22 @@ export type Database = {
           p_project_id: string
           p_qty: number
           p_requisition_id?: string
+        }
+        Returns: Json
+      }
+      cancel_dispatch: {
+        Args: { p_dispatch: string; p_reason: string }
+        Returns: Json
+      }
+      create_dispatch: {
+        Args: {
+          p_challan: string | null
+          p_date: string | null
+          p_fg_ids: string[] | null
+          p_items: Json
+          p_new_fg: Json | null
+          p_project: string
+          p_vehicle: string | null
         }
         Returns: Json
       }
