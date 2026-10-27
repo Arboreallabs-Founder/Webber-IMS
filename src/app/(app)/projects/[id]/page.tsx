@@ -16,7 +16,7 @@ import { IssuedPanel } from "./issued-panel";
 import { DispatchedPanel, type DispatchRow } from "./dispatched-panel";
 import { StockStatusPanel, type StockStatusRow } from "./stock-status-panel";
 import { JobWorkPanel, type JwStockRow, type JwOrderRow } from "./job-work-panel";
-import { ShortfallPanel } from "./shortfall-panel";
+import { ShortfallPanel, type ShortfallSupply } from "./shortfall-panel";
 import { PhaseBanner } from "./phase-banner";
 import { ProjectTabs } from "./project-tabs";
 import { SitePurchaseForm } from "./site-purchase-form";
@@ -361,6 +361,51 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   bomLines = bomLines.map((l) => ({ ...l, component_label: withRaw(l.component_id, l.component_label) }));
   shortfallRows = shortfallRows.map((r) => ({ ...r, component_label: withRaw(r.component_id, r.component_label) }));
 
+  // ---- Raise PO for selected shortfall: each short component's default supplier
+  // (Master Data), the vendors linked to it, their Master Data price, and the last
+  // approved PO rate per vendor. Rates only for roles that may see prices.
+  const canPrice = canSeeFinancials(profile?.role);
+  const shortCompIds = shortfallRows.filter((r) => r.shortfall > 0).map((r) => r.component_id);
+  const [{ data: shortVendorLinks }, { data: shortPoRates }] = canWrite && shortCompIds.length
+    ? await Promise.all([
+        supabase.from("vendor_components").select("component_id, vendor_id, price").in("component_id", shortCompIds),
+        canPrice
+          ? supabase.from("po_lines")
+              .select("component_id, rate, approved_at, created_at, purchase_orders(vendor_id)")
+              .in("component_id", shortCompIds)
+              .eq("approval_status", "approved")
+              .not("rate", "is", null)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [] }),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const compById = new Map((components ?? []).map((c) => [c.id, c]));
+  const shortfallSupply: Record<string, ShortfallSupply> = {};
+  for (const cid of shortCompIds) {
+    shortfallSupply[cid] = {
+      defaultVendorId: (compById.get(cid) as { raw_supplier_id?: string | null } | undefined)?.raw_supplier_id ?? null,
+      linkedVendorIds: [],
+      lastRateByVendor: {},
+      priceByVendor: {},
+    };
+  }
+  for (const l of shortVendorLinks ?? []) {
+    const s = shortfallSupply[l.component_id];
+    if (!s) continue;
+    s.linkedVendorIds.push(l.vendor_id);
+    if (canPrice && l.price != null) s.priceByVendor[l.vendor_id] = Number(l.price);
+  }
+  // Newest approved rate per component + vendor (the list is newest first).
+  const rateTime = (r: { approved_at: string | null; created_at: string }) => r.approved_at ?? r.created_at;
+  for (const r of [...(shortPoRates ?? [])].sort((a, b) => rateTime(b).localeCompare(rateTime(a)))) {
+    const po = r.purchase_orders as unknown as { vendor_id: string | null } | { vendor_id: string | null }[] | null;
+    const vendorId = Array.isArray(po) ? po[0]?.vendor_id : po?.vendor_id;
+    const s = r.component_id ? shortfallSupply[r.component_id] : undefined;
+    if (!s || !vendorId || s.lastRateByVendor[vendorId] !== undefined) continue;
+    s.lastRateByVendor[vendorId] = Number(r.rate);
+  }
+  const poVendors = vendors.map((v) => ({ id: v.id, name: v.name }));
+
   // ---- Dispatch to client: open units, line items left to log, and past dispatches ----
   const finance = canSeeFinancials(profile?.role);
   // Missing-BOM warning for the summary box (the BOM tab shows the same, with the controls).
@@ -553,6 +598,20 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             ),
           },
           {
+            id: "shortfall",
+            label: "Stock check & shortfall",
+            content: (
+              <ShortfallPanel
+                projectId={id}
+                rows={shortfallRows}
+                canProcure={canWrite}
+                supply={shortfallSupply}
+                vendors={poVendors}
+                showRates={canPrice}
+              />
+            ),
+          },
+          {
             id: "issued",
             label: "Materials issued",
             content: (
@@ -577,11 +636,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 cancelAction={cancelDispatch}
               />
             ),
-          },
-          {
-            id: "shortfall",
-            label: "Stock check & shortfall",
-            content: <ShortfallPanel projectId={id} rows={shortfallRows} canProcure={canWrite} />,
           },
           {
             id: "site-purchase",

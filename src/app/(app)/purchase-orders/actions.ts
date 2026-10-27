@@ -399,38 +399,33 @@ export async function backfillPoSignature(fd: FormData): Promise<ActionResult & 
   return { ok: true, fully_signed: res.fully_signed };
 }
 
-// ---- raise draft PO(s) directly from a project's shortfall — one per supplier ----
-export async function raisePoFromShortfall(fd: FormData): Promise<ActionResult> {
+// ---- raise draft PO(s) for the shortfall components picked on the project's
+// Shortfall tab, with the quantity, vendor and rate confirmed in the popup —
+// one new draft PO per vendor. Rates go through the usual price gate.
+export async function raisePoForSelectedShortfall(fd: FormData): Promise<ActionResult> {
   const p = await procurer();
   if (!p) return { error: "Only Admin / Team Lead can raise POs." };
-  const project_id = String(fd.get("project_id"));
-  const supabase = await createClient();
-  const { data: short } = await supabase
-    .from("v_project_shortfall")
-    .select("component_id, shortfall_qty")
-    .eq("project_id", project_id)
-    .gt("shortfall_qty", 0);
-  if (!short || short.length === 0) return { error: "No shortfall to order." };
-
-  // Group shortfall lines by each component's raw supplier — a PO goes to one
-  // vendor, so components from different suppliers can't share a PO.
-  const componentIds = [...new Set(short.map((s) => s.component_id).filter((v): v is string => !!v))];
-  const { data: comps } = await supabase.from("components").select("id, raw_supplier_id").in("id", componentIds);
-  const supplierByComponent = new Map((comps ?? []).map((c) => [c.id, c.raw_supplier_id as string | null]));
-
-  const byVendor = new Map<string | null, { component_id: string; shortfall_qty: number }[]>();
-  for (const s of short) {
-    if (!s.component_id) continue;
-    const vendorId = supplierByComponent.get(s.component_id) ?? null;
-    const group = byVendor.get(vendorId) ?? [];
-    group.push({ component_id: s.component_id, shortfall_qty: s.shortfall_qty });
-    byVendor.set(vendorId, group);
+  const project_id = String(fd.get("project_id") ?? "");
+  let items: { component_id: string; qty: number; vendor_id: string | null; rate: number | null }[] = [];
+  try {
+    items = JSON.parse(String(fd.get("items") ?? "[]"));
+  } catch {
+    return { error: "Invalid PO details." };
   }
+  if (!project_id) return { error: "Missing project." };
+  if (items.length === 0) return { error: "Pick at least one component." };
+  if (items.some((i) => !i.component_id || !(Number(i.qty) > 0))) return { error: "Every quantity must be more than 0." };
+  if (items.some((i) => i.rate != null && !(Number(i.rate) >= 0))) return { error: "Rates can't be negative." };
+  if (items.some((i) => !i.vendor_id)) return { error: "Pick a vendor for every component." };
 
-  const vendorIds = [...byVendor.keys()].filter((v): v is string => v !== null);
-  const { data: vendors } = vendorIds.length
-    ? await supabase.from("vendors").select("id, name").in("id", vendorIds)
-    : { data: [] };
+  const supabase = await createClient();
+  const byVendor = new Map<string, typeof items>();
+  for (const it of items) {
+    const group = byVendor.get(it.vendor_id!) ?? [];
+    group.push(it);
+    byVendor.set(it.vendor_id!, group);
+  }
+  const { data: vendors } = await supabase.from("vendors").select("id, name").in("id", [...byVendor.keys()]);
   const vendorName = new Map((vendors ?? []).map((v) => [v.id, v.name as string]));
 
   const created: { id: string; po_no: string; vendor_name: string | null }[] = [];
@@ -449,23 +444,36 @@ export async function raisePoFromShortfall(fd: FormData): Promise<ActionResult> 
       if (error && (error.code !== "23505" || attempt >= 4)) return { error: error.message };
       po = data;
     }
-    const poLines = lines.map((s) => ({
-      po_id: po.id,
-      component_id: s.component_id,
-      project_id,
-      qty_ordered: s.shortfall_qty,
-      created_by: p.id,
-    }));
-    const { error: lErr } = await supabase.from("po_lines").insert(poLines);
-    if (lErr) return { error: lErr.message };
-    created.push({ id: po.id, po_no: poNo, vendor_name: vendorId ? vendorName.get(vendorId) ?? null : null });
+    const { error: lErr } = await supabase.from("po_lines").insert(
+      lines.map((l) => {
+        const qty = Number(l.qty);
+        const rate = l.rate == null ? null : Number(l.rate);
+        return {
+          po_id: po.id,
+          component_id: l.component_id,
+          project_id,
+          qty_ordered: qty,
+          rate,
+          amount: rate == null ? null : rate * qty,
+          created_by: p.id,
+        };
+      }),
+    );
+    if (lErr) {
+      // Don't leave an empty draft behind when a line is refused (e.g. the BOM rule).
+      await supabase.from("purchase_orders").delete().eq("id", po.id);
+      return { error: lErr.message };
+    }
+    await recomputePoTotal(supabase, po.id);
+    created.push({ id: po.id, po_no: poNo, vendor_name: vendorName.get(vendorId) ?? null });
   }
 
   revalidatePath("/purchase-orders");
+  revalidatePath(`/projects/${project_id}`);
   if (created.length === 1) return { ok: true, id: created[0].id, created };
   return {
     ok: true,
     created,
-    message: `Raised ${created.length} POs — one per supplier: ${created.map((c) => c.vendor_name ?? "no supplier tagged").join(", ")}.`,
+    message: `Raised ${created.length} POs — one per vendor: ${created.map((c) => c.vendor_name ?? "—").join(", ")}.`,
   };
 }
