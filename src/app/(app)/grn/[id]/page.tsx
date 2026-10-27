@@ -39,6 +39,7 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
         canSeeFinancials={canSeeFinancials(role)}
         signingState={signingState}
         mySignatures={mySignatures ?? []}
+        canApproveIrns={role === "admin" || role === "team_lead"}
       />
     );
   }
@@ -94,6 +95,8 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
     .select("id, irn_no, component_id, qty, status, generated_by, rejection_reason")
     .eq("grn_id", id)
     .order("created_at", { ascending: false });
+  // Signing as an Admin / Team Lead also approves these (sign_grn, 0104).
+  const approvableIrnCount = role === "admin" || role === "team_lead" ? (irns ?? []).filter((i) => i.status === "pending_approval").length : 0;
   const irnGeneratorIds = [...new Set((irns ?? []).map((i) => i.generated_by))];
   const { data: irnGenerators } = irnGeneratorIds.length
     ? await supabase.from("profiles").select("id, full_name").in("id", irnGeneratorIds)
@@ -199,7 +202,7 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
                 description={
                   signingState.isBackfill
                     ? "This GRN predates digital signatures — it already prints fine without one, but you can add yours for the record."
-                    : "Required before this GRN can be printed."
+                    : signApprovesIrnsNote(approvableIrnCount)
                 }
               />
             )}
@@ -242,6 +245,12 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
   );
 }
 
+/** The sign dialog's note — warns when signing will also approve pending inspections. */
+function signApprovesIrnsNote(n: number): string {
+  if (n === 0) return "Required before this GRN can be printed.";
+  return `Signing also approves ${n} pending inspection${n === 1 ? "" : "s"} on this GRN, adding that material to stock. Required before this GRN can be printed.`;
+}
+
 function Info({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
@@ -255,7 +264,7 @@ function Info({ label, value }: { label: string; value: string | null }) {
 // (the vendor is fixed at GRN creation) — a separate, simpler picker than the
 // PO-line-driven GrnReceiver, since there's no quantity-type/manual-cost variation.
 async function JobWorkGrnPage({
-  grnId, grn, canReceive, canSeeFinancials, signingState, mySignatures,
+  grnId, grn, canReceive, canSeeFinancials, signingState, mySignatures, canApproveIrns,
 }: {
   grnId: string;
   grn: { grn_no: string; vendor_id: string | null; challan_no: string | null; received_at: string };
@@ -263,6 +272,7 @@ async function JobWorkGrnPage({
   canSeeFinancials: boolean;
   signingState: Awaited<ReturnType<typeof getSigningState>>;
   mySignatures: MySignature[];
+  canApproveIrns: boolean;
 }) {
   const supabase = await createClient();
   const [vendor, { data: openLinesRaw }, { data: grnLines }] = await Promise.all([
@@ -403,6 +413,7 @@ async function JobWorkGrnPage({
     .select("id, irn_no, status, grn_line_id, component_id, qty")
     .eq("grn_id", grnId)
     .order("created_at");
+  const approvableIrnCount = canApproveIrns ? (allIrns ?? []).filter((i) => i.status === "pending_approval").length : 0;
   const irnByPostedLine = new Map((allIrns ?? []).filter((i) => i.grn_line_id).map((i) => [i.grn_line_id, i]));
   const pendingIrns: PendingJwIrn[] = (allIrns ?? [])
     .filter((i) => !i.grn_line_id && (i.status === "pending_approval" || i.status === "rejected"))
@@ -448,7 +459,7 @@ async function JobWorkGrnPage({
                 description={
                   signingState.isBackfill
                     ? "This GRN predates digital signatures — it already prints fine without one, but you can add yours for the record."
-                    : "Required before this GRN can be printed."
+                    : signApprovesIrnsNote(approvableIrnCount)
                 }
               />
             )}
