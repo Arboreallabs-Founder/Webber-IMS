@@ -250,6 +250,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     projectLabel({ project_no: p.project_no, customer_name: p.customer_id ? otherCustName.get(p.customer_id) ?? null : null }),
   ]));
 
+  const compByIdForStatus = new Map((components ?? []).map((c) => [c.id, c]));
   const stockStatusRows: StockStatusRow[] = plannedComponentIds
     .filter((cid) => !jwComponentIds.has(cid))
     .map((cid) => {
@@ -293,6 +294,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       return {
         component_id: cid,
         component_label: componentLabel.get(cid) ?? "—",
+        consumable: !!(compByIdForStatus.get(cid) as { is_consumable?: boolean } | undefined)?.is_consumable,
         required,
         consumed_mine: consumedMine,
         blocked_mine: blockedMine,
@@ -380,6 +382,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       ])
     : [{ data: [] }, { data: [] }];
   const compById = new Map((components ?? []).map((c) => [c.id, c]));
+  // Consumables are never ordered per project — taken from consumables stock via requisition.
+  const consumableIds = (components ?? []).filter((c) => (c as { is_consumable?: boolean }).is_consumable).map((c) => c.id);
   const shortfallSupply: Record<string, ShortfallSupply> = {};
   for (const cid of shortCompIds) {
     shortfallSupply[cid] = {
@@ -608,6 +612,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 supply={shortfallSupply}
                 vendors={poVendors}
                 showRates={canPrice}
+                consumableIds={consumableIds}
               />
             ),
           },

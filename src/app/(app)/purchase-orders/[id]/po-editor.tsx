@@ -57,6 +57,7 @@ export function PoEditor({
   vendorName,
   canWrite,
   canSeeFinancials,
+  stockOnly = false,
 }: {
   poId: string;
   header: {
@@ -76,6 +77,8 @@ export function PoEditor({
   vendorName: string | null;
   canWrite: boolean;
   canSeeFinancials: boolean;
+  /** Consumables PO: every line is plain stock, so there's no project to pick. */
+  stockOnly?: boolean;
 }) {
   const router = useRouter();
   const termsRef = React.useRef<HTMLTextAreaElement>(null);
@@ -381,10 +384,12 @@ export function PoEditor({
                 </p>
               )}
             </div>
-            <div className="space-y-1.5">
-              <Label>Project tag (optional)</Label>
-              <Combobox items={projectItems} defaultValue="" name="project_id" placeholder="Stock (general inventory)" />
-            </div>
+            {!stockOnly && (
+              <div className="space-y-1.5">
+                <Label>Project tag (optional)</Label>
+                <Combobox items={projectItems} defaultValue="" name="project_id" placeholder="Stock (general inventory)" />
+              </div>
+            )}
             {addQt === "nos" && (
               <div className="space-y-1.5">
                 <Label>Qty{addSelectedComp?.uom ? ` (${addSelectedComp.uom})` : ""}</Label>
@@ -481,10 +486,12 @@ export function PoEditor({
                   : `Price was rejected${editing.rejection_reason ? `: ${editing.rejection_reason}` : ""} — editing the rate will re-check it.`}
               </p>
             )}
-            <div className="space-y-1.5">
-              <Label>Project tag (back-fill)</Label>
-              <Combobox items={projectItems} defaultValue={editing.project_id ?? ""} name="project_id" placeholder="Stock (general inventory)" />
-            </div>
+            {!stockOnly && (
+              <div className="space-y-1.5">
+                <Label>Project tag (back-fill)</Label>
+                <Combobox items={projectItems} defaultValue={editing.project_id ?? ""} name="project_id" placeholder="Stock (general inventory)" />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>

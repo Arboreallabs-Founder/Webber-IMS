@@ -64,6 +64,9 @@ export async function createPO(fd: FormData): Promise<ActionResult> {
   // else took it in the meantime, quietly move on to the next free one
   // instead of failing. A number the user typed themselves is never swapped.
   const keptSuggestion = !manualPoNo || manualPoNo === String(fd.get("suggested_po_no") ?? "").trim();
+  if (fd.get("is_consumables") === "1" && !String(fd.get("vendor_id") ?? "").trim()) {
+    return { error: "Pick the consumables vendor for this PO." };
+  }
   let poNo = manualPoNo || (await supabase.rpc("next_po_no")).data;
   for (let attempt = 0; ; attempt++) {
     const { data, error } = await supabase
@@ -74,12 +77,14 @@ export async function createPO(fd: FormData): Promise<ActionResult> {
         po_date: String(fd.get("po_date") ?? "") || null,
         status: "draft",
         source: "system",
+        is_consumables: fd.get("is_consumables") === "1",
         created_by: p.id,
       })
       .select("id")
       .single();
     if (!error) {
       revalidatePath("/purchase-orders");
+      revalidatePath("/consumables");
       return { ok: true, id: data.id };
     }
     if (error.code !== "23505" || !keptSuggestion || attempt >= 4) return { error: poNoError(error) };
@@ -419,6 +424,11 @@ export async function raisePoForSelectedShortfall(fd: FormData): Promise<ActionR
   if (items.some((i) => !i.vendor_id)) return { error: "Pick a vendor for every component." };
 
   const supabase = await createClient();
+  const { data: consumables } = await supabase
+    .from("components").select("component_no").in("id", items.map((i) => i.component_id)).eq("is_consumable", true);
+  if (consumables?.length) {
+    return { error: `${consumables.map((c) => c.component_no).join(", ")}: consumables aren't ordered per project — take them from consumables stock via requisition.` };
+  }
   const byVendor = new Map<string, typeof items>();
   for (const it of items) {
     const group = byVendor.get(it.vendor_id!) ?? [];

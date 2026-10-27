@@ -20,6 +20,8 @@ export type StockStatusRow = {
   open_available: number;
   elsewhere: { project_no: string; qty: number }[];
   status: "in_wip" | "blocked" | "available" | "issued_elsewhere" | "out_of_stock";
+  /** Consumables are never blocked — consumed straight from stock. */
+  consumable?: boolean;
 };
 
 const STATUS_META: Record<StockStatusRow["status"], { label: string; icon: React.ElementType; className: string }> = {
@@ -78,7 +80,7 @@ export function StockStatusPanel({
     );
   }
 
-  const availableRows = rows.filter((r) => r.status === "available");
+  const availableRows = rows.filter((r) => r.status === "available" && !r.consumable);
 
   return (
     <div className="space-y-4">
@@ -135,7 +137,12 @@ export function StockStatusPanel({
             const Icon = meta.icon;
             return (
               <TableRow key={r.component_id}>
-                <TableCell className="font-medium">{r.component_label}</TableCell>
+                <TableCell className="font-medium">
+                  {r.component_label}
+                  {r.consumable && (
+                    <span className="block text-xs font-normal text-muted-foreground">Consumable — consumed directly, not blocked.</span>
+                  )}
+                </TableCell>
                 <TableCell>{formatNumber(r.required)}</TableCell>
                 <TableCell className={r.consumed_mine > 0 ? "text-emerald-700" : "text-muted-foreground"}>
                   {r.consumed_mine > 0 ? formatNumber(r.consumed_mine) : "—"}

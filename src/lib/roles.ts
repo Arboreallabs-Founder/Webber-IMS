@@ -83,7 +83,7 @@ const FACTORY_ADMIN_BLOCKED_PATHS = ["/masters/approval-rights", "/admin/users"]
  * Inventory Floor sees only these areas (allowlist, so a new page stays hidden
  * from them until deliberately added). Every other role sees everything.
  */
-const FLOOR_PATHS = ["/requisitions", "/purchase-orders", "/grn", "/inventory", "/traceability", "/account"];
+const FLOOR_PATHS = ["/requisitions", "/purchase-orders", "/consumables", "/grn", "/inventory", "/traceability", "/account"];
 
 export function canAccessPath(role: Role | undefined | null, path: string, factoryAdmin = false) {
   const under = (p: string) => path === p || path.startsWith(`${p}/`);

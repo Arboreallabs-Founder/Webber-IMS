@@ -574,6 +574,7 @@ export type Database = {
       }
       components: {
         Row: {
+          is_consumable: boolean
           by_weight: boolean
           component_no: string
           created_at: string
@@ -609,6 +610,7 @@ export type Database = {
           width_mm: number | null
         }
         Insert: {
+          is_consumable?: boolean
           by_weight?: boolean
           component_no: string
           created_at?: string
@@ -644,6 +646,7 @@ export type Database = {
           width_mm?: number | null
         }
         Update: {
+          is_consumable?: boolean
           by_weight?: boolean
           component_no?: string
           created_at?: string
@@ -2875,6 +2878,7 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
+          is_consumables: boolean
           created_at: string
           created_by: string | null
           delivery_address: string | null
@@ -2897,6 +2901,7 @@ export type Database = {
           vendor_id: string | null
         }
         Insert: {
+          is_consumables?: boolean
           created_at?: string
           created_by?: string | null
           delivery_address?: string | null
@@ -2919,6 +2924,7 @@ export type Database = {
           vendor_id?: string | null
         }
         Update: {
+          is_consumables?: boolean
           created_at?: string
           created_by?: string | null
           delivery_address?: string | null
@@ -3627,6 +3633,7 @@ export type Database = {
       }
       vendors: {
         Row: {
+          is_consumables_vendor: boolean
           address: string | null
           avg_lead_time_days: number | null
           contact: string | null
@@ -3643,6 +3650,7 @@ export type Database = {
           website: string | null
         }
         Insert: {
+          is_consumables_vendor?: boolean
           address?: string | null
           avg_lead_time_days?: number | null
           contact?: string | null
@@ -3659,6 +3667,7 @@ export type Database = {
           website?: string | null
         }
         Update: {
+          is_consumables_vendor?: boolean
           address?: string | null
           avg_lead_time_days?: number | null
           contact?: string | null
@@ -4533,6 +4542,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      v_po_kind: {
+        Row: {
+          is_consumables: boolean | null
+          po_id: string | null
+        }
+        Relationships: []
       }
       v_project_consumption: {
         Row: {

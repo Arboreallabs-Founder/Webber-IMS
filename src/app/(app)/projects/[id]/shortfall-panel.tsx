@@ -42,6 +42,7 @@ export function ShortfallPanel({
   supply,
   vendors,
   showRates,
+  consumableIds,
 }: {
   projectId: string;
   rows: Row[];
@@ -49,6 +50,8 @@ export function ShortfallPanel({
   supply: Record<string, ShortfallSupply>;
   vendors: Vendor[];
   showRates: boolean;
+  /** Consumables: never ordered per project, so they can't be ticked here. */
+  consumableIds: string[];
 }) {
   const router = useRouter();
   const [error, setError] = React.useState<string | null>(null);
@@ -56,7 +59,8 @@ export function ShortfallPanel({
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
-  const shortRows = rows.filter((r) => r.shortfall > 0);
+  const consumable = React.useMemo(() => new Set(consumableIds), [consumableIds]);
+  const shortRows = rows.filter((r) => r.shortfall > 0 && !consumable.has(r.component_id));
   const selectedRows = shortRows.filter((r) => selected.has(r.component_id));
   const allSelected = shortRows.length > 0 && shortRows.every((r) => selected.has(r.component_id));
   const toggle = (id: string) =>
@@ -145,7 +149,7 @@ export function ShortfallPanel({
             <TableRow key={r.component_id}>
               {canProcure && (
                 <TableCell>
-                  {r.shortfall > 0 && (
+                  {r.shortfall > 0 && !consumable.has(r.component_id) && (
                     <input
                       type="checkbox"
                       aria-label={`Select ${r.component_label}`}
@@ -156,7 +160,12 @@ export function ShortfallPanel({
                   )}
                 </TableCell>
               )}
-              <TableCell className="font-medium">{r.component_label}</TableCell>
+              <TableCell className="font-medium">
+                {r.component_label}
+                {consumable.has(r.component_id) && r.shortfall > 0 && (
+                  <span className="block text-xs font-normal text-muted-foreground">Consumable — take it from consumables stock via requisition.</span>
+                )}
+              </TableCell>
               <TableCell>{formatNumber(r.required)}</TableCell>
               <TableCell>{formatNumber(r.on_hand)}</TableCell>
               <TableCell className="text-muted-foreground">{formatNumber(r.ordered)}</TableCell>

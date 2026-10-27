@@ -1,4 +1,4 @@
-import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess, canManageUsers } from "@/lib/auth";
 import { getVendors } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
@@ -18,6 +18,7 @@ export default async function VendorsPage() {
     { key: "avg_lead_time_days", label: "Lead (days)", format: "number" },
     { key: "rating", label: "Rating", format: "number" },
     { key: "is_active", label: "Active", format: "bool" },
+    { key: "is_consumables_vendor", label: "Consumables", format: "bool" },
   ];
   const fields: Field[] = [
     { name: "name", label: "Vendor name", type: "text", required: true },
@@ -29,6 +30,9 @@ export default async function VendorsPage() {
     { name: "avg_lead_time_days", label: "Avg lead time (days)", type: "number" },
     { name: "rating", label: "Rating (0–5)", type: "number", step: "any" },
     { name: "is_active", label: "Active", type: "checkbox", defaultChecked: true },
+    ...(canManageUsers(profile)
+      ? [{ name: "is_consumables_vendor", label: "Consumables vendor (consumables are ordered from them in the Consumables module)", type: "checkbox" as const }]
+      : []),
     { name: "address", label: "Address", type: "textarea" },
   ];
 

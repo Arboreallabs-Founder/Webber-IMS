@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, canManageUsers, requirePathAccess } from "@/lib/auth";
 import { getVendors, getComponents } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
@@ -40,6 +40,7 @@ export default async function ComponentsPage() {
     { key: "parent_assembly_label", label: "Sub-assembly" },
     { key: "is_assembly", label: "Assembly", format: "bool" },
     { key: "is_job_work", label: "Job Work", format: "bool" },
+    { key: "is_consumable", label: "Consumable", format: "bool" },
     { key: "inspection_template_label", label: "Inspection" },
     { key: "uom", label: "UoM" },
     { key: "standard_cost", label: "Std Cost", format: "inr", financial: true },
@@ -86,6 +87,9 @@ export default async function ComponentsPage() {
     { name: "cut_from_plate", label: "Cut from plate", type: "checkbox" },
     { name: "reorder_level", label: "Reorder level", type: "number", step: "any" },
     { name: "standard_cost", label: "Standard cost (₹)", type: "number", step: "any", financial: true },
+    ...(canManageUsers(profile)
+      ? [{ name: "is_consumable", label: "Consumable (bought for stock via the Consumables module; never blocked for a project)", type: "checkbox" as const }]
+      : []),
     // ---- job work ----
     { name: "is_job_work", label: "Job Work component (raw → finished)", type: "checkbox" },
     { name: "raw_supplier_id", label: "Raw supplier", type: "combobox", options: vendorOptions, help: "Vendor the raw form is bought from." },

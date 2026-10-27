@@ -42,11 +42,14 @@ export function AllPosTable({
   finance,
   canDownload,
   poRegisterRows,
+  basePath = "/purchase-orders",
 }: {
   pos: PoRow[];
   finance: boolean;
   canDownload: boolean;
   poRegisterRows: PoRegisterRow[];
+  /** "/consumables" when listing the Consumables module. */
+  basePath?: string;
 }) {
   const [query, setQuery] = React.useState("");
   const filtered = pos.filter((po) => {
@@ -102,7 +105,7 @@ export function AllPosTable({
                 </TableCell>
                 {finance && <TableCell>{formatINR(po.total_amount)}</TableCell>}
                 <TableCell className="text-right">
-                  <Link href={`/purchase-orders/${po.id}`} aria-label="Open" className={buttonVariants({ variant: "ghost", size: "icon" })}>
+                  <Link href={`${basePath}/${po.id}`} aria-label="Open" className={buttonVariants({ variant: "ghost", size: "icon" })}>
                     <ArrowRight className="size-4" />
                   </Link>
                 </TableCell>

@@ -72,6 +72,12 @@ export async function blockStockForBom(fd: FormData): Promise<ActionResult> {
   }
   if (byComponent.size === 0) return { error: "BOM has no component lines to block stock for." };
 
+  // Consumables are never blocked for a project — they're consumed straight from stock.
+  const { data: consumables } = await supabase
+    .from("components").select("id").in("id", [...byComponent.keys()]).eq("is_consumable", true);
+  for (const c of consumables ?? []) byComponent.delete(c.id);
+  if (byComponent.size === 0) return { ok: true, message: "Nothing to block — every BOM line is a consumable, taken straight from stock." };
+
   // Only block what the project hasn't already consumed — otherwise a BOM
   // approved after work started would reserve its full quantity again.
   // (issue_requisition separately subtracts what is already reserved.)

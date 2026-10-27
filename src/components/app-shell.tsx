@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   Menu, X, LogOut, ChevronsUpDown, Circle,
   LayoutDashboard, Database,
-  FolderKanban, ClipboardList, ShoppingCart, PackageCheck, Warehouse,
+  FolderKanban, ClipboardList, ShoppingCart, PackageOpen, PackageCheck, Warehouse,
   Package, AlertTriangle, Gauge, UserCog, ScanLine, PenLine,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -29,6 +29,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/projects": FolderKanban,
   "/requisitions": ClipboardList,
   "/purchase-orders": ShoppingCart,
+  "/consumables": PackageOpen,
   "/grn": PackageCheck,
   "/inventory": Warehouse,
   "/traceability": ScanLine,
