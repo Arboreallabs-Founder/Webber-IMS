@@ -16,9 +16,10 @@ import { IssuedPanel } from "./issued-panel";
 import { DispatchedPanel, type DispatchRow } from "./dispatched-panel";
 import { StockStatusPanel, type StockStatusRow } from "./stock-status-panel";
 import { JobWorkPanel, type JwStockRow, type JwOrderRow } from "./job-work-panel";
-import { ShortfallPanel, type ShortfallSupply } from "./shortfall-panel";
+import { ShortfallPanel } from "./shortfall-panel";
+import { loadShortfallSupply } from "@/lib/server/shortfall-supply";
 import { PhaseBanner } from "./phase-banner";
-import { ProjectTabs } from "./project-tabs";
+import { HashTabs } from "@/components/hash-tabs";
 import { SitePurchaseForm } from "./site-purchase-form";
 import { FinishedGoodsForm } from "./finished-goods-form";
 import {
@@ -367,47 +368,20 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   // (Master Data), the vendors linked to it, their Master Data price, and the last
   // approved PO rate per vendor. Rates only for roles that may see prices.
   const canPrice = canSeeFinancials(profile?.role);
-  const shortCompIds = shortfallRows.filter((r) => r.shortfall > 0).map((r) => r.component_id);
-  const [{ data: shortVendorLinks }, { data: shortPoRates }] = canWrite && shortCompIds.length
-    ? await Promise.all([
-        supabase.from("vendor_components").select("component_id, vendor_id, price").in("component_id", shortCompIds),
-        canPrice
-          ? supabase.from("po_lines")
-              .select("component_id, rate, approved_at, created_at, purchase_orders(vendor_id)")
-              .in("component_id", shortCompIds)
-              .eq("approval_status", "approved")
-              .not("rate", "is", null)
-              .order("created_at", { ascending: false })
-          : Promise.resolve({ data: [] }),
-      ])
-    : [{ data: [] }, { data: [] }];
   const compById = new Map((components ?? []).map((c) => [c.id, c]));
   // Consumables are never ordered per project — taken from consumables stock via requisition.
   const consumableIds = (components ?? []).filter((c) => (c as { is_consumable?: boolean }).is_consumable).map((c) => c.id);
-  const shortfallSupply: Record<string, ShortfallSupply> = {};
-  for (const cid of shortCompIds) {
-    shortfallSupply[cid] = {
-      defaultVendorId: (compById.get(cid) as { raw_supplier_id?: string | null } | undefined)?.raw_supplier_id ?? null,
-      linkedVendorIds: [],
-      lastRateByVendor: {},
-      priceByVendor: {},
-    };
-  }
-  for (const l of shortVendorLinks ?? []) {
-    const s = shortfallSupply[l.component_id];
-    if (!s) continue;
-    s.linkedVendorIds.push(l.vendor_id);
-    if (canPrice && l.price != null) s.priceByVendor[l.vendor_id] = Number(l.price);
-  }
-  // Newest approved rate per component + vendor (the list is newest first).
-  const rateTime = (r: { approved_at: string | null; created_at: string }) => r.approved_at ?? r.created_at;
-  for (const r of [...(shortPoRates ?? [])].sort((a, b) => rateTime(b).localeCompare(rateTime(a)))) {
-    const po = r.purchase_orders as unknown as { vendor_id: string | null } | { vendor_id: string | null }[] | null;
-    const vendorId = Array.isArray(po) ? po[0]?.vendor_id : po?.vendor_id;
-    const s = r.component_id ? shortfallSupply[r.component_id] : undefined;
-    if (!s || !vendorId || s.lastRateByVendor[vendorId] !== undefined) continue;
-    s.lastRateByVendor[vendorId] = Number(r.rate);
-  }
+  const shortfallSupply = canWrite
+    ? await loadShortfallSupply(
+        supabase,
+        new Map(
+          shortfallRows
+            .filter((r) => r.shortfall > 0)
+            .map((r) => [r.component_id, (compById.get(r.component_id) as { raw_supplier_id?: string | null } | undefined)?.raw_supplier_id ?? null]),
+        ),
+        canPrice,
+      )
+    : {};
   const poVendors = vendors.map((v) => ({ id: v.id, name: v.name }));
 
   // ---- Dispatch to client: open units, line items left to log, and past dispatches ----
@@ -524,7 +498,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </CardContent>
       </Card>
 
-      <ProjectTabs
+      <HashTabs
         tabs={[
           {
             id: "line-items",

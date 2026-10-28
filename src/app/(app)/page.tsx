@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   const finance = canSeeFinancials(profile?.role);
   const supabase = await createClient();
 
-  const [activeP, overdue, untagged, missingPo, stale, variance, costingRes, onhandRes, projectsRes, customersRes] =
+  const [activeP, overdue, untagged, missingPo, stale, variance, belowMin, costingRes, onhandRes, projectsRes, customersRes] =
     await Promise.all([
       supabase.from("projects").select("*", { count: "exact", head: true }).neq("status", "closed"),
       supabase.from("v_po_overdue").select("po_id"),
@@ -24,6 +24,7 @@ export default async function DashboardPage() {
       supabase.from("v_missing_po").select("*", { count: "exact", head: true }),
       supabase.from("v_stale_stock").select("*", { count: "exact", head: true }),
       supabase.from("v_bom_variance").select("*", { count: "exact", head: true }).or("uncovered_qty.gt.0,receive_gap.gt.0"),
+      supabase.from("v_min_stock_shortfall").select("*", { count: "exact", head: true }),
       supabase.from("v_project_costing").select("*"),
       finance ? shelfStockByStatus(supabase) : Promise.resolve(null),
       supabase.from("projects").select("id, project_no, customer_id"),
@@ -63,12 +64,14 @@ export default async function DashboardPage() {
     { label: "Untagged receipts", value: formatNumber(c(untagged)), tone: c(untagged) > 0 ? "text-amber-600" : undefined },
   ];
 
+  // Each tile opens its tab in the Action Center.
   const checks = [
-    { label: "BOM variance", n: c(variance) },
-    { label: "Untagged", n: c(untagged) },
-    { label: "Missing PO", n: c(missingPo) },
-    { label: "Stale stock", n: c(stale) },
-    { label: "PO overdue", n: overdueLines.length },
+    { label: "Below minimum", n: c(belowMin), tab: "min-stock" },
+    { label: "BOM variance", n: c(variance), tab: "bom-variance" },
+    { label: "Untagged", n: c(untagged), tab: "untagged" },
+    { label: "Missing PO", n: c(missingPo), tab: "missing-po" },
+    { label: "Stale stock", n: c(stale), tab: "stale" },
+    { label: "PO overdue", n: overdueLines.length, tab: "overdue" },
   ];
 
   const costingRows = (costingRes.data ?? [])
@@ -112,7 +115,7 @@ export default async function DashboardPage() {
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {checks.map((ck) => (
-                <Link key={ck.label} href="/reconciliation" className="flex items-center justify-between rounded-md border border-border px-3 py-2 hover:bg-accent">
+                <Link key={ck.label} href={`/reconciliation#${ck.tab}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 hover:bg-accent">
                   <span className="text-sm">{ck.label}</span>
                   <Badge variant={ck.n > 0 ? "warning" : "success"}>{ck.n}</Badge>
                 </Link>

@@ -14,6 +14,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { formatNumber } from "@/lib/utils";
 import { raisePoForSelectedShortfall } from "../../purchase-orders/actions";
 import type { ActionResult } from "../../purchase-orders/actions";
+import type { ShortfallSupply } from "@/lib/server/shortfall-supply";
 
 type Row = {
   component_id: string;
@@ -26,13 +27,6 @@ type Row = {
   shortfall: number;
 };
 
-/** Per short component: default supplier, vendors linked in Master Data, and rates to pre-fill. */
-export type ShortfallSupply = {
-  defaultVendorId: string | null;
-  linkedVendorIds: string[];
-  lastRateByVendor: Record<string, number>;
-  priceByVendor: Record<string, number>;
-};
 type Vendor = { id: string; name: string };
 
 export function ShortfallPanel({
@@ -217,21 +211,32 @@ export function ShortfallPanel({
 }
 
 type Line = { qty: string; vendorId: string; rate: string; rateTouched: boolean };
+type DialogRow = { component_id: string; component_label: string; shortfall: number };
 
-function RaisePoDialog({
+/**
+ * Confirm quantity, vendor and rate for the ticked short components, then raise
+ * one draft PO per vendor. With no project (Action Center's Minimum stock) the
+ * POs are for stock, and consumables — offered only consumables vendors — go on
+ * their own Consumables PO.
+ */
+export function RaisePoDialog({
   projectId,
   rows,
   supply,
   vendors,
   showRates,
+  consumableIds = [],
+  consumableVendorIds = [],
   onClose,
   onRaised,
 }: {
-  projectId: string;
-  rows: Row[];
+  projectId: string | null;
+  rows: DialogRow[];
   supply: Record<string, ShortfallSupply>;
   vendors: Vendor[];
   showRates: boolean;
+  consumableIds?: string[];
+  consumableVendorIds?: string[];
   onClose: () => void;
   onRaised: (res: ActionResult) => void;
 }) {
@@ -244,7 +249,9 @@ function RaisePoDialog({
   const [lines, setLines] = React.useState<Record<string, Line>>(() =>
     Object.fromEntries(
       rows.map((r) => {
-        const vendorId = supply[r.component_id]?.defaultVendorId ?? "";
+        const def = supply[r.component_id]?.defaultVendorId ?? "";
+        // A consumable's default supplier is pre-picked only if it is a consumables vendor.
+        const vendorId = def && consumableIds.includes(r.component_id) && !consumableVendorIds.includes(def) ? "" : def;
         return [r.component_id, { qty: String(r.shortfall), vendorId, rate: vendorId ? rateFor(r.component_id, vendorId) : "", rateTouched: false }];
       }),
     ),
@@ -261,7 +268,12 @@ function RaisePoDialog({
       return { ...l, [cid]: { ...cur, vendorId, rate: cur.rateTouched ? cur.rate : rateFor(cid, vendorId) } };
     });
 
-  const vendorCount = new Set(Object.values(lines).map((l) => l.vendorId).filter(Boolean)).size;
+  const consumable = React.useMemo(() => new Set(consumableIds), [consumableIds]);
+  const consumablesVendor = React.useMemo(() => new Set(consumableVendorIds), [consumableVendorIds]);
+  // One PO per vendor, and per kind: a vendor's consumables go on a separate Consumables PO.
+  const vendorCount = new Set(
+    rows.map((r) => lines[r.component_id].vendorId && `${lines[r.component_id].vendorId}|${consumable.has(r.component_id)}`).filter(Boolean),
+  ).size;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -277,7 +289,7 @@ function RaisePoDialog({
       return { component_id: r.component_id, qty: Number(l.qty), vendor_id: l.vendorId, rate: showRates && l.rate !== "" ? Number(l.rate) : null };
     });
     const fd = new FormData();
-    fd.set("project_id", projectId);
+    fd.set("project_id", projectId ?? "");
     fd.set("items", JSON.stringify(items));
     setBusy(true);
     const res: ActionResult = await raisePoForSelectedShortfall(fd);
@@ -310,9 +322,11 @@ function RaisePoDialog({
               {rows.map((r) => {
                 const l = lines[r.component_id];
                 const s = supply[r.component_id];
+                // Consumables can only be bought from a consumables vendor.
+                const allowed = (v: string) => vendorName.has(v) && (!consumable.has(r.component_id) || consumablesVendor.has(v));
                 const linked = [...new Set([...(s?.defaultVendorId ? [s.defaultVendorId] : []), ...(s?.linkedVendorIds ?? [])])]
-                  .filter((v) => vendorName.has(v));
-                const others = vendors.filter((v) => !linked.includes(v.id));
+                  .filter(allowed);
+                const others = vendors.filter((v) => !linked.includes(v.id) && allowed(v.id));
                 const rateHint =
                   l.vendorId && s?.lastRateByVendor[l.vendorId] != null
                     ? "last PO rate"
@@ -321,7 +335,10 @@ function RaisePoDialog({
                       : "no previous rate";
                 return (
                   <tr key={r.component_id}>
-                    <td className="px-3 py-2">{r.component_label}</td>
+                    <td className="px-3 py-2">
+                      {r.component_label}
+                      {consumable.has(r.component_id) && <span className="block text-xs text-muted-foreground">Consumable — Consumables PO</span>}
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{formatNumber(r.shortfall)}</td>
                     <td className="px-3 py-2">
                       <Input
@@ -377,7 +394,7 @@ function RaisePoDialog({
         </div>
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className="mr-auto text-sm text-muted-foreground">{vendorCount > 1 ? `${vendorCount} vendors → ${vendorCount} draft POs` : vendorCount === 1 ? "1 draft PO" : ""}</span>
+          <span className="mr-auto text-sm text-muted-foreground">{vendorCount > 1 ? `${vendorCount} draft POs` : vendorCount === 1 ? "1 draft PO" : ""}</span>
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="submit" loading={busy}>
             <ShoppingCart className="size-4" /> Raise PO

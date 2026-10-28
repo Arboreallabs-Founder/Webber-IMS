@@ -43,6 +43,7 @@ export default async function ComponentsPage() {
     { key: "is_consumable", label: "Consumable", format: "bool" },
     { key: "inspection_template_label", label: "Inspection" },
     { key: "uom", label: "UoM" },
+    { key: "reorder_level", label: "Min stock", format: "number" },
     { key: "standard_cost", label: "Std Cost", format: "inr", financial: true },
   ];
 
@@ -85,7 +86,13 @@ export default async function ComponentsPage() {
     { name: "by_weight", label: "Priced / issued by weight", type: "checkbox" },
     { name: "weight_uom", label: "Weight UoM", type: "text", placeholder: "Kg" },
     { name: "cut_from_plate", label: "Cut from plate", type: "checkbox" },
-    { name: "reorder_level", label: "Reorder level", type: "number", step: "any" },
+    {
+      name: "reorder_level",
+      label: "Minimum stock",
+      type: "number",
+      step: "any",
+      help: "Keep at least this much in open stock (in this component's unit). Below it, the component shows in the Action Center. Leave empty for no minimum.",
+    },
     { name: "standard_cost", label: "Standard cost (₹)", type: "number", step: "any", financial: true },
     ...(canManageUsers(profile)
       ? [{ name: "is_consumable", label: "Consumable (bought for stock via the Consumables module; never blocked for a project)", type: "checkbox" as const }]

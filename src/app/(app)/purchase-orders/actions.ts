@@ -405,8 +405,10 @@ export async function backfillPoSignature(fd: FormData): Promise<ActionResult & 
 }
 
 // ---- raise draft PO(s) for the shortfall components picked on the project's
-// Shortfall tab, with the quantity, vendor and rate confirmed in the popup —
-// one new draft PO per vendor. Rates go through the usual price gate.
+// Shortfall tab, or — with no project — the Action Center's Minimum stock tab,
+// with the quantity, vendor and rate confirmed in the popup. One new draft PO
+// per vendor; for stock, consumables go on their own Consumables PO. Rates go
+// through the usual price gate.
 export async function raisePoForSelectedShortfall(fd: FormData): Promise<ActionResult> {
   const p = await procurer();
   if (!p) return { error: "Only Admin / Team Lead can raise POs." };
@@ -417,7 +419,6 @@ export async function raisePoForSelectedShortfall(fd: FormData): Promise<ActionR
   } catch {
     return { error: "Invalid PO details." };
   }
-  if (!project_id) return { error: "Missing project." };
   if (items.length === 0) return { error: "Pick at least one component." };
   if (items.some((i) => !i.component_id || !(Number(i.qty) > 0))) return { error: "Every quantity must be more than 0." };
   if (items.some((i) => i.rate != null && !(Number(i.rate) >= 0))) return { error: "Rates can't be negative." };
@@ -425,21 +426,33 @@ export async function raisePoForSelectedShortfall(fd: FormData): Promise<ActionR
 
   const supabase = await createClient();
   const { data: consumables } = await supabase
-    .from("components").select("component_no").in("id", items.map((i) => i.component_id)).eq("is_consumable", true);
-  if (consumables?.length) {
+    .from("components").select("id, component_no").in("id", items.map((i) => i.component_id)).eq("is_consumable", true);
+  const consumableIds = new Set((consumables ?? []).map((c) => c.id));
+  if (project_id && consumables?.length) {
     return { error: `${consumables.map((c) => c.component_no).join(", ")}: consumables aren't ordered per project — take them from consumables stock via requisition.` };
   }
-  const byVendor = new Map<string, typeof items>();
-  for (const it of items) {
-    const group = byVendor.get(it.vendor_id!) ?? [];
-    group.push(it);
-    byVendor.set(it.vendor_id!, group);
+  const vendorIds = [...new Set(items.map((i) => i.vendor_id!))];
+  const { data: vendors } = await supabase.from("vendors").select("id, name, is_consumables_vendor").in("id", vendorIds);
+  const vendorById = new Map((vendors ?? []).map((v) => [v.id, v]));
+  const wrongVendor = (consumables ?? []).filter((c) => {
+    const it = items.find((i) => i.component_id === c.id);
+    return !vendorById.get(it?.vendor_id ?? "")?.is_consumables_vendor;
+  });
+  if (wrongVendor.length) {
+    return { error: `${wrongVendor.map((c) => c.component_no).join(", ")}: consumables can only be ordered from a consumables vendor.` };
   }
-  const { data: vendors } = await supabase.from("vendors").select("id, name").in("id", [...byVendor.keys()]);
-  const vendorName = new Map((vendors ?? []).map((v) => [v.id, v.name as string]));
+  // One PO per vendor — and per kind, so a vendor's consumables get their own Consumables PO.
+  const groups = new Map<string, { vendorId: string; consumables: boolean; lines: typeof items }>();
+  for (const it of items) {
+    const isCons = consumableIds.has(it.component_id);
+    const key = `${it.vendor_id}|${isCons}`;
+    const g = groups.get(key) ?? { vendorId: it.vendor_id!, consumables: isCons, lines: [] };
+    g.lines.push(it);
+    groups.set(key, g);
+  }
 
   const created: { id: string; po_no: string; vendor_name: string | null }[] = [];
-  for (const [vendorId, lines] of byVendor) {
+  for (const { vendorId, consumables: isConsumables, lines } of groups.values()) {
     // Retried on a unique-number clash: someone else may raise a PO between
     // reading the next number and inserting it.
     let poNo = "";
@@ -448,7 +461,7 @@ export async function raisePoForSelectedShortfall(fd: FormData): Promise<ActionR
       poNo = (await supabase.rpc("next_po_no")).data ?? "";
       const { data, error } = await supabase
         .from("purchase_orders")
-        .insert({ po_no: poNo, vendor_id: vendorId, status: "draft", source: "system", created_by: p.id })
+        .insert({ po_no: poNo, vendor_id: vendorId, status: "draft", source: "system", is_consumables: isConsumables, created_by: p.id })
         .select("id")
         .single();
       if (error && (error.code !== "23505" || attempt >= 4)) return { error: error.message };
@@ -461,7 +474,7 @@ export async function raisePoForSelectedShortfall(fd: FormData): Promise<ActionR
         return {
           po_id: po.id,
           component_id: l.component_id,
-          project_id,
+          project_id: project_id || null,
           qty_ordered: qty,
           rate,
           amount: rate == null ? null : rate * qty,
@@ -475,15 +488,24 @@ export async function raisePoForSelectedShortfall(fd: FormData): Promise<ActionR
       return { error: lErr.message };
     }
     await recomputePoTotal(supabase, po.id);
-    created.push({ id: po.id, po_no: poNo, vendor_name: vendorName.get(vendorId) ?? null });
+    created.push({
+      id: po.id,
+      po_no: poNo,
+      vendor_name: `${vendorById.get(vendorId)?.name ?? "—"}${isConsumables ? " (Consumables)" : ""}`,
+    });
   }
 
   revalidatePath("/purchase-orders");
-  revalidatePath(`/projects/${project_id}`);
+  if (project_id) revalidatePath(`/projects/${project_id}`);
+  else {
+    revalidatePath("/reconciliation");
+    revalidatePath("/consumables");
+    revalidatePath("/");
+  }
   if (created.length === 1) return { ok: true, id: created[0].id, created };
   return {
     ok: true,
     created,
-    message: `Raised ${created.length} POs — one per vendor: ${created.map((c) => c.vendor_name ?? "—").join(", ")}.`,
+    message: `Raised ${created.length} POs: ${created.map((c) => c.vendor_name).join(", ")}.`,
   };
 }

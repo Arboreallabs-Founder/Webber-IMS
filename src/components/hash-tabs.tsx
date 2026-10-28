@@ -3,16 +3,17 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export type ProjectTab = { id: string; label: string; content: React.ReactNode };
+export type HashTab = { id: string; label: string; content: React.ReactNode };
 
 /**
- * The project page's sections as switchable tabs. Every panel stays rendered
+ * A page's sections as switchable tabs (project page, Action Center). The
+ * first tab opens by default. Every panel stays rendered
  * (inactive ones are hidden), so switching keeps whatever was typed or
  * expanded. The open tab follows the URL hash: links such as "#bom" from the
  * phase banner or a notification open that tab, and switching tabs updates
  * the hash so a reload or a shared link lands on the same tab.
  */
-export function ProjectTabs({ tabs }: { tabs: ProjectTab[] }) {
+export function HashTabs({ tabs }: { tabs: HashTab[] }) {
   const ids = React.useMemo(() => tabs.map((t) => t.id), [tabs]);
   const [active, setActive] = React.useState(tabs[0]?.id);
 
