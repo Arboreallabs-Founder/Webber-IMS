@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/auth";
+import { canManageUsers, getProfile, requirePathAccess } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
 import { upsert, remove } from "./actions";
@@ -11,6 +11,7 @@ const DOC_TYPE_LABEL: Record<string, string> = {
 const SLOT_LABEL: Record<number, string> = { 2: "2nd signer", 3: "3rd signer" };
 
 export default async function ApprovalRightsPage() {
+  await requirePathAccess("/masters/approval-rights");
   const profile = await getProfile();
   const supabase = await createClient();
   const [{ data: rights }, { data: users }] = await Promise.all([
@@ -69,7 +70,7 @@ export default async function ApprovalRightsPage() {
         fields={fields}
         upsertAction={upsert}
         deleteAction={remove}
-        canWrite={profile?.role === "admin"}
+        canWrite={canManageUsers(profile)}
         canSeeFinancials
         searchKeys={["document_type_label", "approver_name"]}
       />

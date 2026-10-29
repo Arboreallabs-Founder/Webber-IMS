@@ -10,21 +10,22 @@ import { MobileRowCard } from "@/components/ui/mobile-row-card";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { RequisitionEditor } from "./requisition-editor";
 import { ScanConsume } from "./scan-consume";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function RequisitionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const profile = await getProfile();
   const role = profile?.role;
   const canProcure = role === "admin" || role === "team_lead" || role === "inventory_admin";
-  const canRequest = canProcure || role === "team_member";
+  const canRequest = canProcure || role === "team_member" || role === "floor";
   const supabase = await createClient();
 
   const { data: req } = await supabase.from("requisitions").select("*").eq("id", id).single();
   if (!req) notFound();
 
-  const [{ data: lines }, { data: components }, project, { data: movements }] = await Promise.all([
+  const [{ data: lines }, components, project, { data: movements }] = await Promise.all([
     supabase.from("requisition_lines").select("*").eq("requisition_id", id).order("created_at"),
-    supabase.from("components").select("id, component_no, name").order("component_no"),
+    readAll((f, t) => supabase.from("components").select("id, component_no, name").order("component_no").order("id").range(f, t)),
     req.project_id
       ? supabase.from("projects").select("project_no, is_internal, department, consumption_reason").eq("id", req.project_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -66,9 +67,19 @@ export default async function RequisitionDetailPage({ params }: { params: Promis
 
   const consumedLotIds = [...new Set((movements ?? []).map((m) => m.lot_id).filter(Boolean))] as string[];
   const { data: consumedLots } = consumedLotIds.length
-    ? await supabase.from("inventory_lots").select("id, lot_code").in("id", consumedLotIds)
+    ? await supabase.from("inventory_lots").select("id, lot_code, source_lot_id").in("id", consumedLotIds)
     : { data: [] };
-  const lotCode = new Map((consumedLots ?? []).map((l) => [l.id, l.lot_code]));
+  // Stock taken from a reserved slice is labelled with the lot it sits in —
+  // the sticker that was actually scanned.
+  const sourceIds = [...new Set((consumedLots ?? []).map((l) => l.source_lot_id).filter((v): v is string => !!v))];
+  const { data: sourceLots } = sourceIds.length
+    ? await supabase.from("inventory_lots").select("id, lot_code").in("id", sourceIds)
+    : { data: [] };
+  const sourceCode = new Map((sourceLots ?? []).map((l) => [l.id, l.lot_code]));
+  const lotCode = new Map((consumedLots ?? []).map((l) => [
+    l.id,
+    l.source_lot_id ? `${l.lot_code} (in ${sourceCode.get(l.source_lot_id) ?? "another lot"})` : l.lot_code,
+  ]));
   const consumedRows = (movements ?? []).map((m) => ({
     id: m.id,
     component_label: m.component_id ? compLabel.get(m.component_id) ?? "—" : "—",

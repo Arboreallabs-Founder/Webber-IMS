@@ -13,7 +13,8 @@ function json(body: unknown, status = 200) {
   });
 }
 
-const ROLES = ["admin", "founder", "team_lead", "team_member", "inventory_admin"];
+const ROLES = ["admin", "founder", "team_lead", "team_member", "inventory_admin", "viewer", "floor", "accounts"];
+// "factory_admin" is stored as role 'admin' with is_factory_admin = true.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -24,12 +25,12 @@ Deno.serve(async (req) => {
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const authHeader = req.headers.get("Authorization") ?? "";
 
-  // 1) Identify the caller and confirm they are an admin.
+  // 1) Identify the caller and confirm they are a full admin (not a Factory Admin).
   const caller = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
   const { data: { user }, error: uErr } = await caller.auth.getUser();
   if (uErr || !user) return json({ error: "Not authenticated" }, 401);
-  const { data: prof } = await caller.from("profiles").select("role").eq("id", user.id).single();
-  if (!prof || prof.role !== "admin") return json({ error: "Admin only" }, 403);
+  const { data: prof } = await caller.from("profiles").select("role, is_factory_admin").eq("id", user.id).single();
+  if (!prof || prof.role !== "admin" || prof.is_factory_admin) return json({ error: "Admin only" }, 403);
 
   // 2) Validate input.
   let body: Record<string, unknown>;
@@ -37,7 +38,8 @@ Deno.serve(async (req) => {
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
   const full_name = body.full_name ? String(body.full_name) : null;
-  const role = ROLES.includes(String(body.role)) ? String(body.role) : "team_member";
+  const factoryAdmin = String(body.role) === "factory_admin";
+  const role = factoryAdmin ? "admin" : ROLES.includes(String(body.role)) ? String(body.role) : "team_member";
   if (!email || password.length < 6) return json({ error: "Email and a 6+ char password are required" }, 400);
 
   // 3) Create the auth user + profile with the service role.
@@ -48,7 +50,7 @@ Deno.serve(async (req) => {
   if (cErr || !created.user) return json({ error: cErr?.message ?? "Could not create user" }, 400);
 
   const { error: pErr } = await admin.from("profiles").insert({
-    id: created.user.id, full_name, role, created_by: user.id, is_active: true,
+    id: created.user.id, full_name, role, is_factory_admin: factoryAdmin, created_by: user.id, is_active: true,
   });
   if (pErr) {
     await admin.auth.admin.deleteUser(created.user.id); // roll back orphaned auth user

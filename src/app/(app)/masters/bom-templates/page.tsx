@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters } from "@/lib/auth";
+import { getProfile, canWriteMasters, requirePathAccess } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
 import { upsert, remove } from "./actions";
 
 export default async function BomTemplatesPage() {
+  await requirePathAccess("/masters");
   const profile = await getProfile();
   const supabase = await createClient();
   const [{ data: templates }, { data: products }, { data: assemblies }, { data: lines }] = await Promise.all([

@@ -2,7 +2,7 @@
 
 import { upsertRecord, deleteRecord, type ActionResult } from "@/lib/server/crud";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/auth";
+import { getProfile, canManageUsers } from "@/lib/auth";
 import { canWriteComponents } from "@/lib/roles";
 
 const FIELDS = {
@@ -15,13 +15,17 @@ const FIELDS = {
   uom: "string",
   quantity_type: "string",
   tracking_mode: "string",
+  reorder_level: "number",
   raw_supplier_id: "string",
   standard_cost: "number",
   inspection_template_id: "string",
 } as const;
 
 export async function upsert(fd: FormData): Promise<ActionResult> {
-  const res = await upsertRecord("components", FIELDS, fd, canWriteComponents);
+  // "Consumable" is a full-Admin decision: only read it from their form, so a
+  // Team Lead saving the component can never untick it by omission.
+  const fields = canManageUsers(await getProfile()) ? { ...FIELDS, is_consumable: "boolean" as const } : FIELDS;
+  const res = await upsertRecord("components", fields, fd, canWriteComponents);
   if (res.error) return res;
 
   // A supplier tag implies that vendor supplies this component — keep

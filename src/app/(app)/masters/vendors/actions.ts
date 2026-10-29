@@ -1,6 +1,7 @@
 "use server";
 
 import { upsertRecord, deleteRecord, type ActionResult } from "@/lib/server/crud";
+import { getProfile, canManageUsers } from "@/lib/auth";
 
 const VENDOR_FIELDS = {
   name: "string",
@@ -16,7 +17,11 @@ const VENDOR_FIELDS = {
 } as const;
 
 export async function upsert(fd: FormData): Promise<ActionResult> {
-  return upsertRecord("vendors", VENDOR_FIELDS, fd);
+  // "Consumables vendor" is a full-Admin decision — only read it from their form.
+  const fields = canManageUsers(await getProfile())
+    ? { ...VENDOR_FIELDS, is_consumables_vendor: "boolean" as const }
+    : VENDOR_FIELDS;
+  return upsertRecord("vendors", fields, fd);
 }
 export async function remove(fd: FormData): Promise<ActionResult> {
   return deleteRecord("vendors", fd);

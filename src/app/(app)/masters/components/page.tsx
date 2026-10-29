@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteComponents, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteComponents, canSeeFinancials, canManageUsers, requirePathAccess } from "@/lib/auth";
 import { getComponents, getVendors } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
 import { upsert, remove } from "./actions";
 
 export default async function ComponentsPage() {
+  await requirePathAccess("/masters");
   const profile = await getProfile();
   const finance = canSeeFinancials(profile?.role);
   const supabase = await createClient();
@@ -65,8 +66,10 @@ export default async function ComponentsPage() {
     { key: "grade", label: "Grade" },
     { key: "parent_assembly_label", label: "Sub-assembly" },
     { key: "is_assembly", label: "Assembly", format: "bool" },
+    { key: "is_consumable", label: "Consumable", format: "bool" },
     { key: "inspection_template_label", label: "Inspection" },
     { key: "alternatives_display", label: "Alternatives" },
+    { key: "reorder_level", label: "Min stock", format: "number" },
     { key: "standard_cost", label: "Std Cost", format: "inr", financial: true },
   ];
 
@@ -77,7 +80,17 @@ export default async function ComponentsPage() {
     { name: "grade", label: "Grade", type: "text", placeholder: "MS, SS316, Brass…" },
     { name: "spec", label: "Spec", type: "text", placeholder: 'e.g. 12", #150' },
     { name: "raw_supplier_id", label: "Supplier", type: "combobox", options: vendorOptions, help: "Vendor this component is bought from." },
+    {
+      name: "reorder_level",
+      label: "Minimum stock",
+      type: "number",
+      step: "any",
+      help: "Keep at least this many in open stock. Below it, the component shows in the Action Center. Leave empty for no minimum.",
+    },
     { name: "standard_cost", label: "Standard cost (₹)", type: "number", step: "any", financial: true },
+    ...(canManageUsers(profile)
+      ? [{ name: "is_consumable", label: "Consumable (bought for stock via the Consumables module; never blocked for a project)", type: "checkbox" as const }]
+      : []),
     {
       name: "inspection_template_id",
       label: "Inspection template",

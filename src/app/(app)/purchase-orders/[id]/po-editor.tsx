@@ -15,6 +15,8 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { formatINR, formatNumber, formatDate } from "@/lib/utils";
 import { updatePO, addPoLine, updatePoLine, removePoLine, type ActionResult } from "../actions";
 import { Combobox } from "@/components/ui/combobox";
+import { SearchInput } from "@/components/ui/search-input";
+import { DEFAULT_PO_TERMS } from "@/lib/po-terms";
 
 type Line = {
   id: string;
@@ -55,12 +57,14 @@ export function PoEditor({
   vendorName,
   canWrite,
   canSeeFinancials,
+  stockOnly = false,
 }: {
   poId: string;
   header: {
     po_no: string; vendor_id: string | null; po_date: string | null; status: string;
     delivery_terms: string; payment_terms: string; freight_terms: string; gst_percent: number;
     delivery_address: string | null;
+    terms_conditions: string;
   };
   lines: Line[];
   components: ComponentOpt[];
@@ -73,8 +77,11 @@ export function PoEditor({
   vendorName: string | null;
   canWrite: boolean;
   canSeeFinancials: boolean;
+  /** Consumables PO: every line is plain stock, so there's no project to pick. */
+  stockOnly?: boolean;
 }) {
   const router = useRouter();
+  const termsRef = React.useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<Line | null>(null);
@@ -84,6 +91,7 @@ export function PoEditor({
   const [totalWeight, setTotalWeight] = React.useState("");
   const [rateInput, setRateInput] = React.useState("");
   const [showAllComponents, setShowAllComponents] = React.useState(false);
+  const [lineQuery, setLineQuery] = React.useState("");
   const projLabel = new Map(projects.map((p) => [p.id, p.label]));
   const compMap = React.useMemo(() => new Map(components.map((c) => [c.id, c])), [components]);
   const vendorItems = React.useMemo(() => vendors.map((v) => ({ value: v.id, label: v.name })), [vendors]);
@@ -144,6 +152,24 @@ export function PoEditor({
 
   const total = lines.reduce((s, l) => s + Number(l.amount ?? 0), 0);
 
+  const q = lineQuery.trim().toLowerCase();
+  const shownLines = q
+    ? lines.filter((l) =>
+        l.component_label.toLowerCase().includes(q) ||
+        (l.project_id ? projLabel.get(l.project_id) ?? "" : "stock").toLowerCase().includes(q))
+    : lines;
+  // One summary row per matching component: how many times it appears on this PO and for which projects.
+  const matchSummary = q
+    ? [...shownLines.reduce((m, l) => {
+        const key = l.component_id ?? l.component_label;
+        const e = m.get(key) ?? { label: l.component_label, componentId: l.component_id, entries: 0, qty: 0, projects: [] as string[] };
+        e.entries += 1;
+        e.qty += Number(l.qty_ordered ?? 0);
+        e.projects.push(l.project_id ? projLabel.get(l.project_id) ?? "—" : "Stock");
+        return m.set(key, e);
+      }, new Map<string, { label: string; componentId: string | null; entries: number; qty: number; projects: string[] }>()).values()]
+    : [];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -201,6 +227,23 @@ export function PoEditor({
               placeholder="Leave blank to use the default factory address on the printed PO"
             />
           </div>
+          <div className="space-y-1.5 sm:col-span-3">
+            <div className="flex items-center justify-between">
+              <Label>Terms &amp; Conditions</Label>
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline"
+                onClick={() => { if (termsRef.current) termsRef.current.value = DEFAULT_PO_TERMS; }}
+              >
+                Reset to default
+              </button>
+            </div>
+            <Textarea ref={termsRef} name="terms_conditions" rows={8} defaultValue={header.terms_conditions} />
+            <p className="text-xs text-muted-foreground">
+              One term per line — each line prints as a numbered point. Clear the box to print no terms.
+              {header.status !== "draft" && " Changing the terms on a sent PO creates a new revision that must be signed again."}
+            </p>
+          </div>
           <div className="sm:col-span-3">
             <Button type="submit" variant="secondary" loading={busy}><Save className="size-4" /> Save header</Button>
           </div>
@@ -217,6 +260,31 @@ export function PoEditor({
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Lines</h3>
           {canSeeFinancials && <span className="text-sm text-muted-foreground">Total: {formatINR(total)}</span>}
         </div>
+        {lines.length > 0 && (
+          <div className="mb-3 space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <SearchInput value={lineQuery} onChange={setLineQuery} placeholder="Search component no., name or project…" className="max-w-md" />
+              <p className="text-sm text-muted-foreground">{shownLines.length} of {lines.length} lines</p>
+            </div>
+            {matchSummary.length > 0 && (
+              <ul className="space-y-1 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+                {matchSummary.map((m) => {
+                  const c = m.componentId ? compMap.get(m.componentId) : undefined;
+                  const suffix = unitSuffix(c?.quantity_type, c?.uom);
+                  return (
+                    <li key={m.componentId ?? m.label}>
+                      <span className="font-medium">{m.label}</span>
+                      <span className="text-muted-foreground">
+                        {" — "}{m.entries} {m.entries === 1 ? "entry" : "entries"}, total {formatNumber(m.qty)}{suffix ? ` ${suffix}` : ""}
+                        {" · "}{m.projects.join(", ")}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
         <Table>
           <TableHeader>
             <TableRow>
@@ -231,10 +299,10 @@ export function PoEditor({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {lines.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="py-6 text-center text-muted-foreground">No lines yet.</TableCell></TableRow>
+            {shownLines.length === 0 ? (
+              <TableRow><TableCell colSpan={8} className="py-6 text-center text-muted-foreground">{lines.length === 0 ? "No lines yet." : "No lines match."}</TableCell></TableRow>
             ) : (
-              lines.map((l) => (
+              shownLines.map((l) => (
                 <TableRow key={l.id}>
                   <TableCell className="font-medium">{l.component_label}</TableCell>
                   <TableCell>{l.project_id ? projLabel.get(l.project_id) ?? "—" : <Badge variant="secondary">Stock</Badge>}</TableCell>
@@ -316,10 +384,12 @@ export function PoEditor({
                 </p>
               )}
             </div>
-            <div className="space-y-1.5">
-              <Label>Project tag (optional)</Label>
-              <Combobox items={projectItems} defaultValue="" name="project_id" placeholder="Stock (general inventory)" />
-            </div>
+            {!stockOnly && (
+              <div className="space-y-1.5">
+                <Label>Project tag (optional)</Label>
+                <Combobox items={projectItems} defaultValue="" name="project_id" placeholder="Stock (general inventory)" />
+              </div>
+            )}
             {addQt === "nos" && (
               <div className="space-y-1.5">
                 <Label>Qty{addSelectedComp?.uom ? ` (${addSelectedComp.uom})` : ""}</Label>
@@ -416,10 +486,12 @@ export function PoEditor({
                   : `Price was rejected${editing.rejection_reason ? `: ${editing.rejection_reason}` : ""} — editing the rate will re-check it.`}
               </p>
             )}
-            <div className="space-y-1.5">
-              <Label>Project tag (back-fill)</Label>
-              <Combobox items={projectItems} defaultValue={editing.project_id ?? ""} name="project_id" placeholder="Stock (general inventory)" />
-            </div>
+            {!stockOnly && (
+              <div className="space-y-1.5">
+                <Label>Project tag (back-fill)</Label>
+                <Combobox items={projectItems} defaultValue={editing.project_id ?? ""} name="project_id" placeholder="Stock (general inventory)" />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>

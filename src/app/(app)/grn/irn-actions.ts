@@ -6,7 +6,7 @@ import { getProfile } from "@/lib/auth";
 
 export type ActionResult = { ok?: true; error?: string; id?: string; irn_no?: string; status?: string };
 
-const RECEIVE = ["admin", "team_lead", "team_member", "inventory_admin"];
+const RECEIVE = ["admin", "team_lead", "team_member", "inventory_admin", "floor"];
 const MANAGE = ["admin", "team_lead", "inventory_admin"];
 
 async function receiver() {

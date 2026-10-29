@@ -40,11 +40,16 @@ export type PoRow = {
 export function AllPosTable({
   pos,
   finance,
+  canDownload,
   poRegisterRows,
+  basePath = "/purchase-orders",
 }: {
   pos: PoRow[];
   finance: boolean;
+  canDownload: boolean;
   poRegisterRows: PoRegisterRow[];
+  /** "/consumables" when listing the Consumables module. */
+  basePath?: string;
 }) {
   const [query, setQuery] = React.useState("");
   const filtered = pos.filter((po) => {
@@ -58,7 +63,7 @@ export function AllPosTable({
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <SearchInput value={query} onChange={setQuery} placeholder="Search PO no. or vendor…" />
         <p className="text-sm text-muted-foreground">{filtered.length} of {pos.length}</p>
-        <DownloadPoRegisterButton rows={poRegisterRows} finance={finance} className="ml-auto" />
+        {canDownload && <DownloadPoRegisterButton rows={poRegisterRows} finance={finance} className="ml-auto" />}
       </div>
       <Table>
         <TableHeader>
@@ -100,7 +105,7 @@ export function AllPosTable({
                 </TableCell>
                 {finance && <TableCell>{formatINR(po.total_amount)}</TableCell>}
                 <TableCell className="text-right">
-                  <Link href={`/purchase-orders/${po.id}`} aria-label="Open" className={buttonVariants({ variant: "ghost", size: "icon" })}>
+                  <Link href={`${basePath}/${po.id}`} aria-label="Open" className={buttonVariants({ variant: "ghost", size: "icon" })}>
                     <ArrowRight className="size-4" />
                   </Link>
                 </TableCell>

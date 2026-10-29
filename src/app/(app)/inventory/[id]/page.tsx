@@ -20,6 +20,7 @@ type Lot = {
   location: string | null; status: string; unit_cost: number | null;
   created_at: string; project_id: string | null; vendor_id: string | null;
   piece_count: string | number | null; piece_length: string | number | null; piece_weight: string | number | null;
+  source_lot_id: string | null;
 };
 
 /** Renders qty with dimension breakdown for length/weight lots. */
@@ -120,7 +121,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
   if (!comp) notFound();
   const qt = (comp as { quantity_type?: string }).quantity_type ?? "nos";
 
-  const [{ data: allLots }, { data: movements }, { data: consumptionValue }, customers] = await Promise.all([
+  const [{ data: allLots }, { data: movements }, { data: consumptionValue }, customers, { data: lotRates }] = await Promise.all([
     supabase
       .from("inventory_lots")
       // The PO a lot came from is three hops away (lot -> grn_line -> po_line ->
@@ -131,7 +132,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
       // exists, and all three tables are `select using (true)`, so this resolves
       // for every role. Only `po_no` is pulled through — no rates, so the embed
       // carries nothing a non-finance role may not see.
-      .select("id, lot_code, qty_on_hand, qty_initial, location, status, unit_cost, created_at, project_id, vendor_id, piece_count, piece_length, piece_weight, grn_lines!inventory_lots_grn_line_id_fkey(po_lines(purchase_orders(id, po_no)))")
+      .select("id, lot_code, qty_on_hand, qty_initial, location, status, unit_cost, created_at, project_id, vendor_id, piece_count, piece_length, piece_weight, source_lot_id, grn_lines!inventory_lots_grn_line_id_fkey(po_lines(purchase_orders(id, po_no)))")
       .eq("component_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -160,6 +161,10 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
       ? supabase.from("v_project_consumption").select("project_id, consumption_value").eq("component_id", id)
       : Promise.resolve({ data: [] }),
     getCustomers(),
+    // Unit cost shown per lot is the PO rate (the GRN-typed rate is discontinued).
+    finance
+      ? supabase.from("v_lot_rates").select("lot_id, rate").eq("component_id", id)
+      : Promise.resolve({ data: [] as { lot_id: string | null; rate: number | null }[] }),
   ]);
 
   // lot id -> the PO it was received against. Read off the embed before `lots`
@@ -172,7 +177,8 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
     if (po?.id && po.po_no) poByLot.set(l.id, { id: po.id, po_no: po.po_no });
   }
 
-  const lots = (allLots ?? []) as unknown as Lot[];
+  const rateByLot = new Map((lotRates ?? []).map((r) => [r.lot_id, r.rate]));
+  const lots = ((allLots ?? []) as unknown as Lot[]).map((l) => ({ ...l, unit_cost: finance ? rateByLot.get(l.id) ?? null : null }));
   const openLots   = lots.filter((l) => l.status === "open");
   const issuedLots = lots.filter((l) => l.status === "issued");
 
@@ -283,6 +289,11 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
     : { data: [] };
   const perfName = new Map((perfProfiles ?? []).map((p) => [p.id, p.full_name]));
   const lotCode  = new Map(lots.map((l) => [l.id, l.lot_code]));
+  // A slice has no sticker of its own — name the lot it sits in, which is
+  // what someone on the floor would scan.
+  const sliceOf = new Map(lots.filter((l) => l.source_lot_id).map((l) => [l.id, lotCode.get(l.source_lot_id!) ?? null]));
+  const sliceNote = (lotId: string) =>
+    sliceOf.has(lotId) ? <span className="ml-1.5 font-sans text-[11px] text-muted-foreground">in {sliceOf.get(lotId) ?? "another lot"}</span> : null;
 
   const unit = qtUnit(qt);
   const unitSuffix = unit ? ` ${unit}` : "";
@@ -364,7 +375,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
                 <TableBody>
                   {openLots.map((l) => (
                     <TableRow key={l.id}>
-                      <TableCell className="font-mono text-xs">{l.lot_code}</TableCell>
+                      <TableCell className="font-mono text-xs">{l.lot_code}{sliceNote(l.id)}</TableCell>
                       <TableCell><QtyCell lot={l} qt={qt} /></TableCell>
                       <TableCell className="text-muted-foreground">{l.location ?? "—"}</TableCell>
                       {finance && <TableCell className="text-muted-foreground">{formatINR(l.unit_cost)}</TableCell>}
@@ -420,7 +431,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
                 <TableBody>
                   {issuedLots.map((l) => (
                     <TableRow key={l.id}>
-                      <TableCell className="font-mono text-xs">{l.lot_code}</TableCell>
+                      <TableCell className="font-mono text-xs">{l.lot_code}{sliceNote(l.id)}</TableCell>
                       <TableCell className="text-amber-700"><QtyCell lot={l} qt={qt} /></TableCell>
                       <TableCell>
                         {l.project_id
@@ -431,7 +442,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
                       {finance && <TableCell className="text-muted-foreground">{formatINR(l.unit_cost)}</TableCell>}
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {isAdmin && <UnissueLotButton lotId={l.id} componentId={id} />}
+                          {isAdmin && <UnissueLotButton lotId={l.id} componentId={id} qtyOnHand={Number(l.qty_on_hand)} />}
                           <Link href={`/inventory/lots/${l.id}`} aria-label="Lot detail" className={buttonVariants({ variant: "ghost", size: "icon" })}>
                             <ArrowRight className="size-4" />
                           </Link>
@@ -455,7 +466,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
                   ]}
                   actions={
                     <>
-                      {isAdmin && <UnissueLotButton lotId={l.id} componentId={id} />}
+                      {isAdmin && <UnissueLotButton lotId={l.id} componentId={id} qtyOnHand={Number(l.qty_on_hand)} />}
                       <Link href={`/inventory/lots/${l.id}`} aria-label="Lot detail" className={buttonVariants({ variant: "ghost", size: "icon" })}>
                         <ArrowRight className="size-4" />
                       </Link>
@@ -468,7 +479,8 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
         )}
         {isAdmin && issuedLots.length > 0 && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Unissuing a lot removes its project reservation and returns it to open stock.
+            Unissuing returns all or part of a reservation to open stock. Stock reserved inside another
+            lot goes back into that lot.
           </p>
         )}
       </section>
@@ -523,6 +535,7 @@ export default async function ComponentInventoryPage({ params }: { params: Promi
                             <Link href={`/inventory/lots/${l.lotId}`} className="text-primary hover:underline">
                               {lotCode.get(l.lotId) ?? "—"}
                             </Link>
+                            {sliceNote(l.lotId)}
                           </TableCell>
                           <TableCell className="text-xs">
                             {poByLot.has(l.lotId) ? (

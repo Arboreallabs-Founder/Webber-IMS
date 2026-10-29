@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { formatNumber } from "@/lib/utils";
+import { requirePathAccess } from "@/lib/auth";
 
 function pct(n: number, d: number): string {
   if (!d) return "—";
@@ -11,6 +12,7 @@ function pct(n: number, d: number): string {
 }
 
 export default async function SuppliersPage() {
+  await requirePathAccess("/suppliers");
   const supabase = await createClient();
   const { data } = await supabase.from("v_supplier_kpi").select("*");
   const rows = (data ?? []).sort((a, b) => Number(b.total_lines ?? 0) - Number(a.total_lines ?? 0));

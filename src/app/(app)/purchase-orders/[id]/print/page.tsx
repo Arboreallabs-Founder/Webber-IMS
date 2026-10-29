@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/auth";
+import { getProfile, canDownloadReports, canManageUsers } from "@/lib/auth";
 import { PrintButton } from "@/components/print-button";
 import { DocumentSignatureBlock } from "@/components/document-signature-block";
 import { getSigningState } from "@/lib/signatures";
 import { formatNumber } from "@/lib/utils";
 import { DownloadExcelButton } from "./download-excel-button";
+import { poTermsLines } from "@/lib/po-terms";
 
 // ---- our company's fixed details — update with Webber Electro Corp's real info ----
 const OUR = {
@@ -25,15 +26,6 @@ const OUR = {
   ],
 };
 
-const TERMS = [
-  "The material is accepted subject to inspection. Please mention our PO no. on your delivery challan & Invoice.",
-  "The material should be labelled with it's grade, Batch/Lot No., MFG/Expiry date.",
-  "The MTC (Material Test Certificate) should be sent along with the supply.",
-  "The failure due to poor work man ship or any other defect shall be replace free of cost with in the warranty period.",
-  "PO price are firm and final till the exection of contract, no escalation or reqest in increase the price will be entertain.",
-  "The seller shall be liable to pay to buyer LD, a sum equivalent to 0.5% of the Ex work contract value for each week of delay or any part thereof. However, total amount of LD for delay in completion of contract shall be subject to a maximum of 5% fo Ex work contract price.",
-];
-
 function formatDateDDMMYYYY(d: string | null): string {
   if (!d) return "—";
   const dt = new Date(d);
@@ -50,8 +42,10 @@ export default async function PoPrintPage({
 }) {
   const { id } = await params;
   const { unpriced: unpricedParam } = await searchParams;
-  const unpriced = unpricedParam === "1";
   const profile = await getProfile();
+  // Inventory Floor only ever gets the unpriced copy, whatever the URL says.
+  const priceLocked = !canDownloadReports(profile?.role);
+  const unpriced = priceLocked || unpricedParam === "1";
   const supabase = await createClient();
 
   const { data: po } = await supabase.from("purchase_orders").select("*").eq("id", id).single();
@@ -85,12 +79,15 @@ export default async function PoPrintPage({
     );
   }
 
-  if (!signingState.fullySigned) {
+  // A full Admin may print / download a PO before it is fully signed; the copy
+  // is marked unsigned. Everyone else waits for every signature.
+  const unsignedCopy = !signingState.fullySigned;
+  if (unsignedCopy && !canManageUsers(profile)) {
     return (
       <div className="mx-auto max-w-lg py-16 text-center">
         <p className="text-lg font-semibold text-amber-700">Cannot print this PO</p>
         <p className="mt-2 text-sm text-muted-foreground">
-          It still needs {signingState.requiredSlots.length - signingState.signed.length} signature(s) before it can be printed.
+          It still needs {signingState.remainingCount} signature(s) before it can be printed.
         </p>
         <Link href={`/purchase-orders/${id}`} className="mt-4 inline-flex items-center gap-1 text-sm text-primary hover:underline">
           <ArrowLeft className="size-4" /> Back to PO
@@ -125,6 +122,7 @@ export default async function PoPrintPage({
   const gstPct = Number(po.gst_percent ?? 18);
   const gstAmount = (subtotal * gstPct) / 100;
   const total = subtotal + gstAmount;
+  const termsLines = poTermsLines(po.terms_conditions);
   const deliveryAddressLines: string[] = po.delivery_address?.trim() ? po.delivery_address.split(/\r?\n/) : OUR.deliveryAddress;
 
   return (
@@ -134,12 +132,12 @@ export default async function PoPrintPage({
           <ArrowLeft className="size-4" /> Back to PO
         </Link>
         <div className="flex items-center gap-2">
-          <Link
+          {!priceLocked && <Link
             href={unpriced ? `/purchase-orders/${id}/print` : `/purchase-orders/${id}/print?unpriced=1`}
             className="text-sm text-muted-foreground hover:text-foreground hover:underline"
           >
             {unpriced ? "View priced version" : "View unpriced version"}
-          </Link>
+          </Link>}
           {!unpriced && (
             <DownloadExcelButton
               poNo={po.po_no}
@@ -177,6 +175,11 @@ export default async function PoPrintPage({
         </div>
       )}
 
+      {unsignedCopy && (
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-700">
+          Unsigned copy — awaiting {signingState.remainingCount} signature(s); not an approved purchase order
+        </p>
+      )}
       {po.superseded_by && (
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
           Superseded revision — not the current version of this PO
@@ -281,13 +284,15 @@ export default async function PoPrintPage({
           </div>
         )}
 
-        {/* Terms & Condition */}
-        <div className="border-t border-black p-3">
-          <p className="mb-1 font-bold">TERMS &amp; CONDITION:</p>
-          <ol className="list-decimal space-y-0.5 pl-4">
-            {TERMS.map((t) => <li key={t}>{t}</li>)}
-          </ol>
-        </div>
+        {/* Terms & Condition — this PO's own text, one point per line; omitted entirely if cleared */}
+        {termsLines.length > 0 && (
+          <div className="border-t border-black p-3">
+            <p className="mb-1 font-bold">TERMS &amp; CONDITION:</p>
+            <ol className="list-decimal space-y-0.5 pl-4">
+              {termsLines.map((t, i) => <li key={i}>{t}</li>)}
+            </ol>
+          </div>
+        )}
 
         {/* Delivery address + terms */}
         <div className="grid grid-cols-2 gap-3 border-t border-black p-3">

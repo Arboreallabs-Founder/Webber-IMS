@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, canDownloadReports } from "@/lib/auth";
 import { getVendors, getComponentsSafe } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { NewGrnButton } from "./new-grn-button";
 import { IrnApprovalActions } from "./irn-approval-actions";
 import { AllGrnsTable, type GrnRow } from "./all-grns-table";
 import { getPoRegisterRows } from "@/lib/po-register-data";
+import { readAll } from "@/lib/server/read-all";
 import { signGrn } from "./actions";
 
 const TABS = [
@@ -69,12 +70,14 @@ async function activeVendors() {
 
 async function AllGrnsTab() {
   const supabase = await createClient();
-  const finance = canSeeFinancials((await getProfile())?.role);
-  const [{ data: grns }, vendors, { data: lines }, poRegisterRows] = await Promise.all([
-    supabase.from("grns").select("*").order("received_at", { ascending: false }),
+  const role = (await getProfile())?.role;
+  const finance = canSeeFinancials(role);
+  const canDownload = canDownloadReports(role);
+  const [grns, vendors, lines, poRegisterRows] = await Promise.all([
+    readAll((f, t) => supabase.from("grns").select("*").order("received_at", { ascending: false }).order("id").range(f, t)),
     activeVendors(),
-    supabase.from("grn_lines").select("grn_id"),
-    getPoRegisterRows(supabase),
+    readAll((f, t) => supabase.from("grn_lines").select("id, grn_id").order("id").range(f, t)),
+    canDownload ? getPoRegisterRows(supabase, finance) : Promise.resolve([]),
   ]);
 
   const vName = new Map((vendors ?? []).map((v) => [v.id, v.name]));
@@ -91,7 +94,7 @@ async function AllGrnsTab() {
     received_at: g.received_at,
   }));
 
-  return <AllGrnsTable rows={rows} poRegisterRows={poRegisterRows} finance={finance} />;
+  return <AllGrnsTable rows={rows} poRegisterRows={poRegisterRows} finance={finance} canDownload={canDownload} />;
 }
 
 async function ApprovalTab({ canApprove, userId }: { canApprove: boolean; userId: string | null }) {

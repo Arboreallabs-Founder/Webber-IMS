@@ -7,7 +7,7 @@ import { formatNumber } from "@/lib/utils";
 
 export type ActionResult = { ok?: true; error?: string; id?: string; status?: string };
 
-const RECEIVE = ["admin", "team_lead", "team_member", "inventory_admin"]; // gate staff can receive
+const RECEIVE = ["admin", "team_lead", "team_member", "inventory_admin", "floor"]; // gate staff can receive
 
 async function receiver() {
   const p = await getProfile();
@@ -138,33 +138,42 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
 
   // Block over-receipt: this line may not push the PO line's total received
   // quantity above what was ordered. Only applies when receiving against a PO
-  // line — PO-less receipts have nothing to over-receive against. (DB trigger
-  // grn_line_before_insert is the backstop; this gives the receiver a readable
-  // message.)
+  // line — PO-less receipts have nothing to over-receive against. Summed off
+  // grn_lines directly, not po_lines.qty_received — that rollup only counts
+  // lines whose GRN is fully signed (see migration 0096), so it lags behind
+  // while a receipt is still pending signature. Matching the DB trigger's own
+  // check here means this friendly message and the trigger's hard stop agree.
   if (po_line_id) {
     const { data: poLine } = await supabase
       .from("po_lines")
-      .select("qty_ordered, qty_received")
+      .select("qty_ordered")
       .eq("id", po_line_id)
       .maybeSingle();
     if (poLine) {
+      const { data: existingLines } = await supabase
+        .from("grn_lines")
+        .select("qty_received")
+        .eq("po_line_id", po_line_id);
       const ordered = Number(poLine.qty_ordered ?? 0);
-      const received = Number(poLine.qty_received ?? 0);
+      const received = (existingLines ?? []).reduce((s, l) => s + Number(l.qty_received ?? 0), 0);
       const remaining = ordered - received;
       if (qty > remaining + 1e-6) {
         return {
           error:
             `This PO line has ${formatNumber(remaining)} left to receive ` +
-            `(ordered ${formatNumber(ordered)}, already received ${formatNumber(received)}). ` +
+            `(ordered ${formatNumber(ordered)}, already received or pending ${formatNumber(received)}). ` +
             `You entered ${formatNumber(qty)}. Revise the PO quantity if the supplier sent more.`,
         };
       }
     }
   }
 
-  // Trigger: flags untagged, creates inventory lot(s) per tracking_mode (or adds
-  // to target_lot_id box), records receipt movement, rolls up PO qty.
-  const { data: line, error } = await supabase.from("grn_lines").insert({
+  // Trigger: flags untagged, and — once this GRN is fully signed — creates
+  // inventory lot(s) per tracking_mode (or adds to target_lot_id box),
+  // records the receipt movement, and rolls up PO qty. Until then the line
+  // sits recorded but uncounted; piece dimensions travel on the row itself
+  // (not patched onto a lot afterward) so they survive whichever happens.
+  const { error } = await supabase.from("grn_lines").insert({
     grn_id,
     component_id,
     qty_received: qty,
@@ -174,17 +183,13 @@ export async function addGrnLine(fd: FormData): Promise<ActionResult> {
     target_lot_id,
     mpn_id,
     location,
+    piece_count: pieceCount,
+    piece_length: pieceLength,
+    piece_width: pieceWidth,
+    piece_weight: pieceWeight,
     created_by: p.id,
   }).select("id").single();
   if (error) return { error: error.message };
-
-  // If dimensions were supplied (bulk), patch the lot the trigger just created.
-  if (target_lot_id === null && (pieceCount !== null || pieceLength !== null || pieceWidth !== null || pieceWeight !== null)) {
-    await supabase
-      .from("inventory_lots")
-      .update({ piece_count: pieceCount, piece_length: pieceLength, piece_width: pieceWidth, piece_weight: pieceWeight })
-      .eq("grn_line_id", line.id);
-  }
 
   revalidatePath(`/grn/${grn_id}`);
   return { ok: true };

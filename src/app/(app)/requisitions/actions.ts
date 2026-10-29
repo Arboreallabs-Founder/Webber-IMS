@@ -7,7 +7,7 @@ import { getProfile } from "@/lib/auth";
 export type ActionResult = { ok?: true; error?: string; id?: string };
 
 const PROCURE = ["admin", "team_lead", "inventory_admin"];
-const REQUEST = ["admin", "team_lead", "team_member", "inventory_admin"];
+const REQUEST = ["admin", "team_lead", "team_member", "inventory_admin", "floor"];
 
 async function profileWith(roles: string[]) {
   const p = await getProfile();

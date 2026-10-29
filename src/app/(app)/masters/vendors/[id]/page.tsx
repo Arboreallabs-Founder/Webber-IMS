@@ -2,13 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters, canSeeFinancials } from "@/lib/auth";
+import { getProfile, canWriteMasters, canSeeFinancials, requirePathAccess } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { CrudManager, type Column, type Field } from "@/components/crud/crud-manager";
 import { upsertVendorComponent, removeVendorComponent } from "../actions";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function VendorDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePathAccess("/masters");
   const { id } = await params;
   const profile = await getProfile();
   const finance = canSeeFinancials(profile?.role);
@@ -17,9 +19,9 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
   const { data: vendor } = await supabase.from("vendors").select("*").eq("id", id).single();
   if (!vendor) notFound();
 
-  const [{ data: vcs }, { data: components }] = await Promise.all([
+  const [{ data: vcs }, components] = await Promise.all([
     supabase.from("vendor_components").select("*").eq("vendor_id", id),
-    supabase.from("components").select("id, component_no, name").order("component_no"),
+    readAll((f, t) => supabase.from("components").select("id, component_no, name").order("component_no").order("id").range(f, t)),
   ]);
 
   const compById = new Map((components ?? []).map((c) => [c.id, `${c.component_no} — ${c.name}`]));

@@ -2,13 +2,14 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
-import type { Role } from "@/lib/roles";
+import { canManageUsers, profileRoleFields } from "@/lib/roles";
 
 export type ActionResult = { ok?: true; error?: string };
 
+/** Full Admin only — a Factory Admin can't create users or change roles (profiles_mod RLS agrees). */
 async function requireAdmin() {
   const profile = await getProfile();
-  return profile?.role === "admin" ? profile : null;
+  return canManageUsers(profile) ? profile : null;
 }
 
 export async function createUser(fd: FormData): Promise<ActionResult> {
@@ -49,7 +50,7 @@ export async function updateUser(fd: FormData): Promise<ActionResult> {
   const { error } = await (supabase.from("profiles") as any)
     .update({
       full_name: String(fd.get("full_name") ?? "").trim() || null,
-      role: String(fd.get("role") ?? "team_member") as Role,
+      ...profileRoleFields(String(fd.get("role") ?? "team_member")),
       is_active: fd.get("is_active") !== null,
     })
     .eq("id", id);

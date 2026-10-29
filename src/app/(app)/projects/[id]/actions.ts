@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters } from "@/lib/auth";
+import { getProfile, canWriteMasters, canApproveBom, canManageUsers } from "@/lib/auth";
 import { expandBomLines, type TemplateLine } from "@/lib/bom-engine";
+import { readAll } from "@/lib/server/read-all";
 
 export type ActionResult = { ok?: true; error?: string; message?: string; id?: string };
 
@@ -25,6 +26,23 @@ export async function updateProjectStatus(fd: FormData): Promise<ActionResult> {
   if (!project_id || !status) return { error: "Missing fields." };
   const supabase = await createClient();
   const { error } = await supabase.from("projects").update({ status }).eq("id", project_id);
+  if (error) return { error: error.message };
+  revalidate(project_id);
+  return { ok: true };
+}
+
+// ---------- does this project need a BOM? ----------
+// New projects need an approved BOM before POs, blocking or consumption (the
+// database enforces it). A full Admin can tick "No BOM needed" — consumables,
+// fixed assets and other internal projects — or untick it again.
+export async function setBomNotNeeded(fd: FormData): Promise<ActionResult> {
+  const p = await getProfile();
+  if (!canManageUsers(p)) return { error: "Only an Admin can change whether a project needs a BOM." };
+  const project_id = String(fd.get("project_id") ?? "");
+  if (!project_id) return { error: "Missing project." };
+  const notNeeded = fd.get("not_needed") === "true";
+  const supabase = await createClient();
+  const { error } = await supabase.from("projects").update({ bom_not_needed: notNeeded }).eq("id", project_id);
   if (error) return { error: error.message };
   revalidate(project_id);
   return { ok: true };
@@ -53,6 +71,40 @@ export async function blockStockForBom(fd: FormData): Promise<ActionResult> {
     byComponent.set(l.component_id, (byComponent.get(l.component_id) ?? 0) + Number(l.required_qty ?? 0));
   }
   if (byComponent.size === 0) return { error: "BOM has no component lines to block stock for." };
+
+  // Consumables are never blocked for a project — they're consumed straight from stock.
+  const { data: consumables } = await supabase
+    .from("components").select("id").in("id", [...byComponent.keys()]).eq("is_consumable", true);
+  for (const c of consumables ?? []) byComponent.delete(c.id);
+  if (byComponent.size === 0) return { ok: true, message: "Nothing to block — every BOM line is a consumable, taken straight from stock." };
+
+  // Only block what the project hasn't already consumed — otherwise a BOM
+  // approved after work started would reserve its full quantity again.
+  // (issue_requisition separately subtracts what is already reserved.)
+  const { data: consumption } = await supabase
+    .from("v_project_consumption")
+    .select("component_id, consumed_qty")
+    .eq("project_id", project_id);
+  for (const c of consumption ?? []) {
+    if (!c.component_id || !byComponent.has(c.component_id)) continue;
+    const left = byComponent.get(c.component_id)! - Number(c.consumed_qty ?? 0);
+    if (left > 0) byComponent.set(c.component_id, left);
+    else byComponent.delete(c.component_id);
+  }
+  // Raw material out with a job-work vendor for this project isn't consumption,
+  // but it is already spoken for — don't block more stock in its place.
+  const { data: jwOut } = await supabase
+    .from("job_work_orders")
+    .select("job_work_lines(component_id, qty_sent, qty_returned)")
+    .eq("project_id", project_id)
+    .in("status", ["sent", "partial"]);
+  for (const l of (jwOut ?? []).flatMap((o) => o.job_work_lines ?? [])) {
+    if (!l.component_id || !byComponent.has(l.component_id)) continue;
+    const left = byComponent.get(l.component_id)! - Math.max(Number(l.qty_sent ?? 0) - Number(l.qty_returned ?? 0), 0);
+    if (left > 0) byComponent.set(l.component_id, left);
+    else byComponent.delete(l.component_id);
+  }
+  if (byComponent.size === 0) return { ok: true, message: "Nothing to block — the project has already consumed everything on the BOM." };
 
   const { data: reqNo } = await supabase.rpc("next_req_no");
   const { data: req, error: reqErr } = await supabase
@@ -151,8 +203,9 @@ export async function generateBom(fd: FormData): Promise<ActionResult> {
       .single();
     if (error) return { error: error.message };
     bomId = bom.id;
-  } else if (existingBom?.status === "approved") {
-    await supabase.from("boms").update({ status: "draft", approved_by: null, approved_at: null }).eq("id", bomId);
+  } else if (existingBom?.status !== "draft") {
+    // Regenerating an approved or submitted BOM sends it back to draft — it needs approving again.
+    await supabase.from("boms").update(BACK_TO_DRAFT).eq("id", bomId);
   }
 
   // 3) clear previous template-sourced lines (keep manual)
@@ -160,9 +213,9 @@ export async function generateBom(fd: FormData): Promise<ActionResult> {
 
   // 4) lookups: active templates + their lines + component_no map
   const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
-  const [{ data: templates }, { data: components }] = await Promise.all([
+  const [{ data: templates }, components] = await Promise.all([
     supabase.from("bom_templates").select("id, product_id").eq("is_active", true).in("product_id", productIds),
-    supabase.from("components").select("id, component_no"),
+    readAll((f, t) => supabase.from("components").select("id, component_no").order("id").range(f, t)),
   ]);
   const templateByProduct = new Map((templates ?? []).map((t) => [t.product_id, t.id]));
   const compByNo = new Map((components ?? []).map((c) => [String(c.component_no).toLowerCase(), c.id]));
@@ -231,34 +284,158 @@ export async function startCustomBom(fd: FormData): Promise<ActionResult> {
 }
 
 // ---------- BOM approval + manual lines ----------
-export async function approveBom(fd: FormData): Promise<ActionResult> {
+// Draft -> (Submit) -> Waiting for approval -> (Approve) -> Approved.
+// An Admin or Team Lead can approve straight from draft. A Factory Admin can
+// only submit; the boms_guard_approval trigger refuses an approval from them.
+const BACK_TO_DRAFT = {
+  status: "draft" as const,
+  approved_by: null,
+  approved_at: null,
+  submitted_by: null,
+  submitted_at: null,
+};
+
+async function bomState(supabase: Awaited<ReturnType<typeof createClient>>, bom_id: string) {
+  const { data } = await supabase.from("boms").select("id, status, project_id, submitted_by").eq("id", bom_id).maybeSingle();
+  return data;
+}
+
+/** Tell people in the app (and on their phones) about a BOM step. */
+async function notify(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  type: string,
+  project_id: string,
+  recipients: string[],
+  message: (projectNo: string) => string,
+  actorId: string,
+) {
+  const to = [...new Set(recipients)].filter((r) => r && r !== actorId);
+  if (to.length === 0) return;
+  const { data: project } = await supabase.from("projects").select("project_no").eq("id", project_id).maybeSingle();
+  const text = message(project?.project_no ?? "a project");
+  await supabase.from("notifications").insert(
+    to.map((recipient_id) => ({ type, project_id, message: text, link_path: `/projects/${project_id}#bom`, created_by: actorId, recipient_id })),
+  );
+}
+
+export async function submitBom(fd: FormData): Promise<ActionResult> {
   const p = await planner();
-  if (!p) return { error: "Only Admin / Team Lead can approve." };
+  if (!p) return { error: "Not authorized." };
   const bom_id = String(fd.get("bom_id") ?? "");
   const project_id = String(fd.get("project_id") ?? "");
   const supabase = await createClient();
+  const bom = await bomState(supabase, bom_id);
+  if (!bom) return { error: "BOM not found." };
+  if (bom.status !== "draft") return { error: "Only a draft BOM can be submitted." };
+  const { count } = await supabase.from("bom_lines").select("id", { count: "exact", head: true }).eq("bom_id", bom_id);
+  if (!count) return { error: "Add at least one line before submitting." };
+
   const { error } = await supabase
     .from("boms")
-    .update({ status: "approved", approved_by: p.id, approved_at: new Date().toISOString() })
-    .eq("id", bom_id);
+    .update({ status: "pending_approval", submitted_by: p.id, submitted_at: new Date().toISOString(), review_note: null })
+    .eq("id", bom_id)
+    .eq("status", "draft");
+  if (error) return { error: error.message };
+
+  const { data: approvers } = await supabase
+    .from("profiles")
+    .select("id")
+    .in("role", ["admin", "team_lead"])
+    .eq("is_factory_admin", false)
+    .eq("is_active", true);
+  await notify(supabase, "bom_submitted", project_id, (approvers ?? []).map((a) => a.id),
+    (no) => `${p.full_name ?? "Someone"} submitted the BOM for ${no} for approval.`, p.id);
+
+  revalidate(project_id);
+  return { ok: true, message: "Submitted for approval. An Admin will review it." };
+}
+
+export async function withdrawBom(fd: FormData): Promise<ActionResult> {
+  const p = await planner();
+  if (!p) return { error: "Not authorized." };
+  const bom_id = String(fd.get("bom_id") ?? "");
+  const project_id = String(fd.get("project_id") ?? "");
+  const supabase = await createClient();
+  const { error } = await supabase.from("boms").update(BACK_TO_DRAFT).eq("id", bom_id).eq("status", "pending_approval");
   if (error) return { error: error.message };
   revalidate(project_id);
   return { ok: true };
 }
 
+export async function sendBackBom(fd: FormData): Promise<ActionResult> {
+  const p = await getProfile();
+  if (!canApproveBom(p)) return { error: "Only an Admin or Team Lead can send a BOM back." };
+  const bom_id = String(fd.get("bom_id") ?? "");
+  const project_id = String(fd.get("project_id") ?? "");
+  const reason = String(fd.get("reason") ?? "").trim();
+  if (!reason) return { error: "Say what needs changing." };
+  const supabase = await createClient();
+  const bom = await bomState(supabase, bom_id);
+  if (!bom || bom.status !== "pending_approval") return { error: "This BOM isn't waiting for approval." };
+
+  const { error } = await supabase.from("boms").update({ ...BACK_TO_DRAFT, review_note: reason }).eq("id", bom_id);
+  if (error) return { error: error.message };
+  if (bom.submitted_by) {
+    await notify(supabase, "bom_sent_back", project_id, [bom.submitted_by],
+      (no) => `${p!.full_name ?? "An Admin"} sent the BOM for ${no} back: ${reason}`, p!.id);
+  }
+  revalidate(project_id);
+  return { ok: true };
+}
+
+export async function approveBom(fd: FormData): Promise<ActionResult> {
+  const p = await getProfile();
+  if (!canApproveBom(p)) return { error: "Only an Admin or Team Lead can approve a BOM — submit it for approval instead." };
+  const bom_id = String(fd.get("bom_id") ?? "");
+  const project_id = String(fd.get("project_id") ?? "");
+  const supabase = await createClient();
+  const bom = await bomState(supabase, bom_id);
+  if (!bom) return { error: "BOM not found." };
+  if (bom.status === "approved") return { error: "This BOM is already approved." };
+  const { error } = await supabase
+    .from("boms")
+    .update({ status: "approved", approved_by: p!.id, approved_at: new Date().toISOString(), review_note: null })
+    .eq("id", bom_id);
+  if (error) return { error: error.message };
+  if (bom.submitted_by) {
+    await notify(supabase, "bom_approved", project_id, [bom.submitted_by],
+      (no) => `${p!.full_name ?? "An Admin"} approved the BOM for ${no}.`, p!.id);
+  }
+
+  // The requirement may have just changed — free any reservation the project
+  // no longer needs rather than waiting for its next consumption.
+  const { data: recheck, error: recheckErr } = await supabase.rpc("recheck_project_reservations", { p_project_id: project_id });
+  revalidate(project_id);
+  const res = recheck as { error?: string; released?: number } | null;
+  if (recheckErr || res?.error) {
+    return { ok: true, message: `BOM approved, but checking reserved stock failed: ${recheckErr?.message ?? res?.error}` };
+  }
+  const released = Number(res?.released ?? 0);
+  return released > 0
+    ? { ok: true, message: `BOM approved. ${released} reserved for this project was no longer needed and went back to open inventory.` }
+    : { ok: true };
+}
+
+/** "Unapprove" for an approver, "Edit BOM" for a Factory Admin — back to draft either way. */
 export async function unapproveBom(fd: FormData): Promise<ActionResult> {
   const p = await planner();
   if (!p) return { error: "Not authorized." };
   const bom_id = String(fd.get("bom_id") ?? "");
   const project_id = String(fd.get("project_id") ?? "");
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("boms")
-    .update({ status: "draft", approved_by: null, approved_at: null })
-    .eq("id", bom_id);
+  const { error } = await supabase.from("boms").update(BACK_TO_DRAFT).eq("id", bom_id).eq("status", "approved");
   if (error) return { error: error.message };
   revalidate(project_id);
   return { ok: true };
+}
+
+/** Lines can only change while the BOM is a draft. */
+async function draftBomOrError(supabase: Awaited<ReturnType<typeof createClient>>, bom_id: string) {
+  const bom = await bomState(supabase, bom_id);
+  if (!bom) return "BOM not found.";
+  if (bom.status === "approved") return "This BOM is approved — edit it first.";
+  if (bom.status === "pending_approval") return "This BOM is waiting for approval — withdraw it first.";
+  return null;
 }
 
 export async function addManualBomLine(fd: FormData): Promise<ActionResult> {
@@ -270,6 +447,8 @@ export async function addManualBomLine(fd: FormData): Promise<ActionResult> {
   const required_qty = Number(fd.get("required_qty") ?? 0) || 0;
   if (!component_id) return { error: "Pick a component." };
   const supabase = await createClient();
+  const locked = await draftBomOrError(supabase, bom_id);
+  if (locked) return { error: locked };
   const { error } = await supabase.from("bom_lines").insert({
     bom_id,
     component_id,
@@ -289,6 +468,10 @@ export async function removeBomLine(fd: FormData): Promise<ActionResult> {
   const id = String(fd.get("id") ?? "");
   const project_id = String(fd.get("project_id") ?? "");
   const supabase = await createClient();
+  const { data: line } = await supabase.from("bom_lines").select("bom_id").eq("id", id).maybeSingle();
+  if (!line) return { error: "Line not found." };
+  const locked = await draftBomOrError(supabase, line.bom_id);
+  if (locked) return { error: locked };
   const { error } = await supabase.from("bom_lines").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidate(project_id);
@@ -383,4 +566,64 @@ export async function replaceShortfallWithAlternative(fd: FormData): Promise<Act
 
   revalidate(project_id);
   return { ok: true, message: `Replaced ${swapQty} unit(s) with ${compNo.get(alternative_id) ?? "the alternative"}.` };
+}
+
+// ---------- dispatch to client ----------
+// Moves consumed material (WIP) to "dispatched" together with the finished
+// good(s) it went into. No stock moves — the lots are already consumed; the
+// create_dispatch RPC ties each line to the lots it came from and refuses
+// more than is still in WIP for the project.
+export async function dispatchToClient(fd: FormData): Promise<ActionResult> {
+  const p = await planner();
+  if (!p) return { error: "Only Admin / Team Lead can dispatch to the client." };
+  const project_id = String(fd.get("project_id") ?? "");
+  let items: { component_id: string; qty: number }[] = [];
+  let fgIds: string[] = [];
+  let newFg: Record<string, unknown> | null = null;
+  try {
+    items = JSON.parse(String(fd.get("items") ?? "[]"));
+    fgIds = JSON.parse(String(fd.get("fg_ids") ?? "[]"));
+    newFg = JSON.parse(String(fd.get("new_fg") ?? "null"));
+  } catch {
+    return { error: "Invalid dispatch details." };
+  }
+  if (!project_id) return { error: "Missing project." };
+  if (items.length === 0) return { error: "Pick at least one component." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_dispatch", {
+    p_project: project_id,
+    p_items: items,
+    p_fg_ids: fgIds.length ? fgIds : null,
+    p_new_fg: newFg,
+    p_date: String(fd.get("dispatch_date") ?? "") || null,
+    p_challan: String(fd.get("challan_no") ?? "") || null,
+    p_vehicle: String(fd.get("vehicle_no") ?? "") || null,
+  });
+  if (error) return { error: error.message };
+  const res = data as { dispatch_no?: string; serials?: string[] };
+  revalidate(project_id);
+  revalidatePath("/finished-goods");
+  revalidatePath("/");
+  return {
+    ok: true,
+    message: `Dispatched as ${res.dispatch_no}${res.serials?.length ? ` with ${res.serials.join(", ")}` : ""}.`,
+  };
+}
+
+/** Full Admin only: the components go back to WIP and the units back to "ready". */
+export async function cancelDispatch(fd: FormData): Promise<ActionResult> {
+  const p = await getProfile();
+  if (!canManageUsers(p)) return { error: "Only an Admin can cancel a dispatch." };
+  const dispatch_id = String(fd.get("dispatch_id") ?? "");
+  const project_id = String(fd.get("project_id") ?? "");
+  const reason = String(fd.get("reason") ?? "").trim();
+  if (!reason) return { error: "Give a reason for cancelling." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancel_dispatch", { p_dispatch: dispatch_id, p_reason: reason });
+  if (error) return { error: error.message };
+  revalidate(project_id);
+  revalidatePath("/finished-goods");
+  revalidatePath("/");
+  return { ok: true };
 }

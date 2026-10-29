@@ -3,12 +3,12 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/database.types";
-import type { Role } from "@/lib/roles";
+import { canAccessPath, homePathFor, isFactoryAdmin, type Role } from "@/lib/roles";
 
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 // Re-export client-safe helpers so server code can import from one place.
-export { ROLE_LABELS, FINANCE_ROLES, canSeeFinancials, canWriteMasters, canWriteComponents } from "@/lib/roles";
+export { ROLE_LABELS, FINANCE_ROLES, canSeeFinancials, canWriteMasters, canWriteComponents, canDownloadReports, isFactoryAdmin, canApproveBom, canManageUsers } from "@/lib/roles";
 export type { Role } from "@/lib/roles";
 
 /**
@@ -39,6 +39,13 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
 export async function requireProfile(): Promise<Profile> {
   const profile = await getProfile();
   if (!profile) redirect("/login");
+  return profile;
+}
+
+/** Redirects to the role's home if this area is outside what the role may open. */
+export async function requirePathAccess(path: string): Promise<Profile> {
+  const profile = await requireProfile();
+  if (!canAccessPath(profile.role, path, isFactoryAdmin(profile))) redirect(homePathFor(profile.role));
   return profile;
 }
 

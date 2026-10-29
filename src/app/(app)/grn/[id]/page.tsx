@@ -14,12 +14,13 @@ import { GrnReceiver } from "./grn-receiver";
 import { submitIrn } from "../irn-actions";
 import { signGrn } from "../actions";
 import { createComponentQuick } from "../../masters/bom-builder/actions";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function GrnDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const profile = await getProfile();
   const role = profile?.role;
-  const canReceive = role === "admin" || role === "team_lead" || role === "team_member" || role === "inventory_admin";
+  const canReceive = role === "admin" || role === "team_lead" || role === "team_member" || role === "inventory_admin" || role === "floor";
   const supabase = await createClient();
 
   const { data: grn } = await supabase.from("grns").select("*").eq("id", id).single();
@@ -30,10 +31,10 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
     profile ? supabase.from("signatures").select("id, label, method, image_data_url, is_default").eq("user_id", profile.id).order("is_default", { ascending: false }) : Promise.resolve({ data: [] }),
   ]);
 
-  const [{ data: grnLines }, { data: components }, { data: projects }, vendor, { data: allOpenPoLines }, { data: vendorComps }, allVendors, { data: inspectionTemplates }] =
+  const [{ data: grnLines }, components, { data: projects }, vendor, { data: allOpenPoLines }, { data: vendorComps }, allVendors, { data: inspectionTemplates }] =
     await Promise.all([
       supabase.from("grn_lines").select("*").eq("grn_id", id).order("created_at"),
-      supabase.from("components").select("id, component_no, name, quantity_type, tracking_mode, inspection_template_id").order("component_no"),
+      readAll((f, t) => supabase.from("components").select("id, component_no, name, quantity_type, tracking_mode, inspection_template_id").order("component_no").order("id").range(f, t)),
       supabase.from("projects").select("id, project_no").order("project_no"),
       grn.vendor_id ? supabase.from("vendors").select("name").eq("id", grn.vendor_id).maybeSingle() : Promise.resolve({ data: null }),
       // All open PO lines system-wide for component lookup
@@ -93,6 +94,8 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
     .select("id, irn_no, component_id, qty, status, generated_by, rejection_reason")
     .eq("grn_id", id)
     .order("created_at", { ascending: false });
+  // Signing as an Admin / Team Lead also approves these (sign_grn, 0104).
+  const approvableIrnCount = role === "admin" || role === "team_lead" ? (irns ?? []).filter((i) => i.status === "pending_approval").length : 0;
   const irnGeneratorIds = [...new Set((irns ?? []).map((i) => i.generated_by))];
   const { data: irnGenerators } = irnGeneratorIds.length
     ? await supabase.from("profiles").select("id, full_name").in("id", irnGeneratorIds)
@@ -118,7 +121,7 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
   // Per-box MPN breakdown — a box can genuinely hold more than one MPN.
   const openBoxIds = (openBoxes ?? []).map((b) => b.id);
   const { data: boxMpnRows } = openBoxIds.length
-    ? await supabase.from("inventory_lot_mpns").select("lot_id, qty, component_mpns(mpn)").in("lot_id", openBoxIds)
+    ? await supabase.from("inventory_lot_mpns").select("lot_id, qty, component_mpns(mpn)").in("lot_id", openBoxIds).gt("qty", 0)
     : { data: [] };
   const mpnsByLot = new Map<string, { label: string; qty: number }[]>();
   for (const r of boxMpnRows ?? []) {
@@ -137,10 +140,24 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
 
   // lots created by this GRN's lines (for lot code display + sticker printing)
   const grnLineIds = (grnLines ?? []).map((l) => l.id);
-  const { data: lots } = grnLineIds.length
-    ? await supabase.from("inventory_lots").select("id, lot_code, grn_line_id, status, project_id").in("grn_line_id", grnLineIds)
+  const { data: lineLots } = grnLineIds.length
+    ? await supabase.from("inventory_lots").select("id, lot_code, grn_line_id, status, project_id, source_lot_id").in("grn_line_id", grnLineIds)
     : { data: [] };
-  const lotByLine = new Map((lots ?? []).map((l) => [l.grn_line_id, l]));
+  // Project stock added to an existing box arrives as a reserved slice of that
+  // box (no sticker of its own), so the line shows — and prints — the box.
+  const lots = (lineLots ?? []).filter((l) => !l.source_lot_id);
+  const boxSlices = (lineLots ?? []).filter((l) => l.source_lot_id);
+  const boxIds = [...new Set(boxSlices.map((l) => l.source_lot_id as string))];
+  const { data: boxes } = boxIds.length
+    ? await supabase.from("inventory_lots").select("id, lot_code").in("id", boxIds)
+    : { data: [] };
+  const boxById = new Map((boxes ?? []).map((b) => [b.id, b]));
+  const lotByLine = new Map<string | null, { id: string; lot_code: string; status: string; project_id: string | null }>();
+  for (const sl of boxSlices) {
+    const box = boxById.get(sl.source_lot_id as string);
+    if (box) lotByLine.set(sl.grn_line_id, { id: box.id, lot_code: box.lot_code, status: sl.status, project_id: sl.project_id });
+  }
+  for (const l of lots) lotByLine.set(l.grn_line_id, l);
 
   // Build a per-component map of ALL open PO lines (for the lookup hint in manual entry)
   const projNo = new Map((projects ?? []).map((p) => [p.id, p.project_no]));
@@ -168,12 +185,15 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
       component_label: l.component_id ? compLabel.get(l.component_id) ?? "—" : "—",
       qty: l.qty_received,
       is_untagged: l.is_untagged,
+      // Not yet turned into stock — the GRN carrying it isn't fully signed
+      // yet, so there is genuinely no lot/QR for it (see migration 0096).
+      pending: !(l as { processed_at?: string | null }).processed_at,
       lot_code: lot?.lot_code ?? null,
       lot_id: lot?.id ?? null,
       blocked_project: lot?.status === "issued" && lot.project_id ? projNo.get(lot.project_id) ?? null : null,
     };
   });
-  const lotIds = (lots ?? []).map((l) => l.id);
+  const lotIds = lots.map((l) => l.id);
 
   return (
     <div>
@@ -194,7 +214,7 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
                 description={
                   signingState.isBackfill
                     ? "This GRN predates digital signatures — it already prints fine without one, but you can add yours for the record."
-                    : "Required before this GRN can be printed."
+                    : signApprovesIrnsNote(approvableIrnCount)
                 }
               />
             )}
@@ -226,7 +246,6 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
         openBoxesByComponent={openBoxesByComponent}
         lotIds={lotIds}
         canReceive={canReceive}
-        canSeeFinancials={canSeeFinancials(role)}
         vendorComponentIds={vendorComponentIds}
         vendorName={vendor?.data?.name ?? null}
         vendorId={grn.vendor_id ?? null}
@@ -238,9 +257,16 @@ export default async function GrnDetailPage({ params }: { params: Promise<{ id: 
         vendorOptions={vendorOptions}
         templateOptions={templateOptions}
         mpnsByComponent={mpnsByComponent}
+        canSeeFinancials={canSeeFinancials(role)}
       />
     </div>
   );
+}
+
+/** The sign dialog's note — warns when signing will also approve pending inspections. */
+function signApprovesIrnsNote(n: number): string {
+  if (n === 0) return "Required before this GRN can be printed.";
+  return `Signing also approves ${n} pending inspection${n === 1 ? "" : "s"} on this GRN, adding that material to stock. Required before this GRN can be printed.`;
 }
 
 function Info({ label, value }: { label: string; value: string | null }) {

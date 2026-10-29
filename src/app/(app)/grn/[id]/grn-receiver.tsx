@@ -16,7 +16,7 @@ import { MobileRowCard } from "@/components/ui/mobile-row-card";
 import { formatNumber } from "@/lib/utils";
 import { addGrnLine, type ActionResult } from "../actions";
 
-type Posted = { id: string; component_label: string; qty: number; is_untagged: boolean; lot_code: string | null; lot_id: string | null; blocked_project: string | null };
+type Posted = { id: string; component_label: string; qty: number; is_untagged: boolean; pending: boolean; lot_code: string | null; lot_id: string | null; blocked_project: string | null };
 type OpenPoEntry = { po_line_id: string; po_no: string; tag: string; project_id: string | null; remaining: number };
 type Component = { id: string; component_no: string; name: string; quantity_type: string; tracking_mode: string; inspection_template_id?: string | null };
 type OpenBox = { id: string; lot_code: string; qty_on_hand: number; container_no: string | null; location: string | null; mpns?: { label: string; qty: number }[] };
@@ -45,7 +45,6 @@ export function GrnReceiver({
   openBoxesByComponent,
   lotIds,
   canReceive,
-  canSeeFinancials,
   vendorComponentIds,
   vendorName,
   vendorId,
@@ -57,6 +56,7 @@ export function GrnReceiver({
   vendorOptions,
   templateOptions,
   mpnsByComponent,
+  canSeeFinancials = false,
 }: {
   grnId: string;
   postedLines: Posted[];
@@ -66,7 +66,6 @@ export function GrnReceiver({
   openBoxesByComponent: Record<string, OpenBox[]>;
   lotIds: string[];
   canReceive: boolean;
-  canSeeFinancials: boolean;
   /** Components tagged to this GRN's vendor (via vendor_components) — narrows the manual picker. */
   vendorComponentIds: string[];
   vendorName: string | null;
@@ -82,6 +81,8 @@ export function GrnReceiver({
   templateOptions?: { value: string; label: string }[];
   /** This component's known MPNs (one WPC can be sourced from several manufacturers). */
   mpnsByComponent?: Record<string, { id: string; mpn: string }[]>;
+  /** Shows Standard cost on the inline "new component" form. */
+  canSeeFinancials?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -177,15 +178,15 @@ export function GrnReceiver({
   const selectedPoLine = matchingPoLines.find((pl) => pl.po_line_id === selectedPoLineId);
   const enteredQty = qt === "nos" ? (Number(manualQty) || 0) : (derivedQty ?? 0);
   const overReceipt = !!selectedPoLine && enteredQty > selectedPoLine.remaining + 1e-6;
-  // A PO's price is what gets registered — a typed Unit cost can't coexist with a matched PO.
-  const poPriceConflict = !!selectedPoLineId && unitCost.trim() !== "";
+  // With a PO line attached the PO's rate is what gets registered, so a Unit
+  // cost is only asked for (and only sent) on a PO-less receipt.
+  const askUnitCost = canSeeFinancials && !!manualComp && !selectedPoLineId;
+  const unitCostLabel = qt === "length" ? "Unit cost (₹/m)" : qt === "weight" ? "Unit cost (₹/kg)" : "Unit cost (₹)";
   const totalCost = React.useMemo(() => {
     const uc = Number(unitCost);
-    if (!unitCost.trim() || !Number.isFinite(uc)) return null;
-    const qty = qt === "nos" ? Number(manualQty) || 0 : (derivedQty ?? 0);
-    if (!qty) return null;
-    return uc * qty;
-  }, [unitCost, manualQty, derivedQty, qt]);
+    if (!unitCost.trim() || !Number.isFinite(uc) || !enteredQty) return null;
+    return uc * enteredQty;
+  }, [unitCost, enteredQty]);
 
   React.useEffect(() => {
     setSelectedPoLineId(matchingPoLines.length > 0 ? matchingPoLines[0].po_line_id : "");
@@ -302,11 +303,8 @@ export function GrnReceiver({
       }
     }
     if (locationRelevant && location.trim()) fd.set("location", location.trim());
-
-    if (poPriceConflict) {
-      setError("A Purchase Order is attached to this line — clear the Unit cost field so the PO's price is the one registered.");
-      return;
-    }
+    if (askUnitCost && unitCost.trim()) fd.set("unit_cost", unitCost.trim());
+    else fd.delete("unit_cost");
 
     if (needsInspection) {
       const missing = templateFields.filter((f) => f.is_required && !answers[f.id]?.trim());
@@ -456,7 +454,7 @@ export function GrnReceiver({
 
                 {qt === "nos" && (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3">
                       <div className="space-y-1.5">
                         <Label>Qty received{trackingMode === "box" && targetLotId ? " (pieces to add to box)" : ""}</Label>
                         <Input
@@ -469,23 +467,6 @@ export function GrnReceiver({
                           required
                         />
                       </div>
-                      {canSeeFinancials && (
-                        <div className="space-y-1.5">
-                          <Label>Unit cost (₹){selectedPoLineId ? " — clear this, the PO's price will be registered" : ""}</Label>
-                          <Input
-                            name="unit_cost"
-                            type="number"
-                            step="any"
-                            value={unitCost}
-                            onChange={(e) => setUnitCost(e.target.value)}
-                          />
-                          {totalCost !== null && !poPriceConflict && (
-                            <p className="text-xs text-muted-foreground">
-                              Total cost: <span className="font-medium text-foreground">₹{formatNumber(totalCost)}</span>
-                            </p>
-                          )}
-                        </div>
-                      )}
                     </div>
 
                     {trackingMode === "item" && (
@@ -514,7 +495,7 @@ export function GrnReceiver({
                 )}
 
                 {qt === "length" && (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <Label>No. of pieces</Label>
                       <Input type="number" step="1" min="1" value={pieceCount}
@@ -527,25 +508,8 @@ export function GrnReceiver({
                         onChange={(e) => setTotalLength(e.target.value)}
                         required placeholder="e.g. 60" />
                     </div>
-                    {canSeeFinancials && (
-                      <div className="space-y-1.5">
-                        <Label>Unit cost (₹/m){selectedPoLineId ? " — clear this, the PO's price will be registered" : ""}</Label>
-                        <Input
-                          name="unit_cost"
-                          type="number"
-                          step="any"
-                          value={unitCost}
-                          onChange={(e) => setUnitCost(e.target.value)}
-                        />
-                        {totalCost !== null && !poPriceConflict && (
-                          <p className="text-xs text-muted-foreground">
-                            Total cost: <span className="font-medium text-foreground">₹{formatNumber(totalCost)}</span>
-                          </p>
-                        )}
-                      </div>
-                    )}
                     {derivedPieceLength !== null && (
-                      <div className="sm:col-span-3">
+                      <div className="sm:col-span-2">
                         <p className="text-sm font-medium text-green-700">
                           ≈ <span className="font-bold">{formatNumber(derivedPieceLength)} m/piece</span>
                           <span className="ml-2 text-muted-foreground">({totalLength} m ÷ {pieceCount} pieces)</span>
@@ -558,7 +522,7 @@ export function GrnReceiver({
                 )}
 
                 {qt === "weight" && (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <Label>No. of pieces</Label>
                       <Input type="number" step="1" min="1" value={pieceCount}
@@ -571,25 +535,8 @@ export function GrnReceiver({
                         onChange={(e) => setTotalWeight(e.target.value)}
                         required placeholder="e.g. 125" />
                     </div>
-                    {canSeeFinancials && (
-                      <div className="space-y-1.5">
-                        <Label>Unit cost (₹/kg){selectedPoLineId ? " — clear this, the PO's price will be registered" : ""}</Label>
-                        <Input
-                          name="unit_cost"
-                          type="number"
-                          step="any"
-                          value={unitCost}
-                          onChange={(e) => setUnitCost(e.target.value)}
-                        />
-                        {totalCost !== null && !poPriceConflict && (
-                          <p className="text-xs text-muted-foreground">
-                            Total cost: <span className="font-medium text-foreground">₹{formatNumber(totalCost)}</span>
-                          </p>
-                        )}
-                      </div>
-                    )}
                     {derivedPieceWeight !== null && (
-                      <div className="sm:col-span-3">
+                      <div className="sm:col-span-2">
                         <p className="text-sm font-medium text-green-700">
                           ≈ <span className="font-bold">{formatNumber(derivedPieceWeight)} kg/piece</span>
                           <span className="ml-2 text-muted-foreground">({totalWeight} kg ÷ {pieceCount} pieces)</span>
@@ -679,6 +626,9 @@ export function GrnReceiver({
                         </label>
                       ))}
                     </div>
+                    {canSeeFinancials && (
+                      <p className="text-xs text-green-800">Valued at this PO line&apos;s rate — no unit cost needed.</p>
+                    )}
                   </div>
                 ) : (
                   <div className="flex items-start gap-2 text-amber-800">
@@ -694,6 +644,19 @@ export function GrnReceiver({
 
             <input type="hidden" name="po_line_id" value={selectedPoLineId} />
 
+            {askUnitCost && (
+              <div className="space-y-1.5">
+                <Label>{unitCostLabel}</Label>
+                <Input type="number" step="any" min="0" value={unitCost}
+                  onChange={(e) => setUnitCost(e.target.value)} placeholder="no PO — what this was bought at" />
+                {totalCost !== null && (
+                  <p className="text-xs text-muted-foreground">
+                    Total cost: <span className="font-medium text-foreground">₹{formatNumber(totalCost)}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
             {overReceipt && selectedPoLine && (
               <p className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-500" />
@@ -705,19 +668,9 @@ export function GrnReceiver({
               </p>
             )}
 
-            {poPriceConflict && (
-              <p className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-500" />
-                <span>
-                  A Purchase Order is attached — its price will be registered, not a typed Unit cost.
-                  Clear the Unit cost field above to continue.
-                </span>
-              </p>
-            )}
-
             <div className="flex items-center gap-2">
               <Button type="submit" variant="secondary"
-                loading={busy === "manual"} disabled={(qt !== "nos" && derivedQty === null) || overReceipt || poPriceConflict}>
+                loading={busy === "manual"} disabled={(qt !== "nos" && derivedQty === null) || overReceipt}>
                 <Plus className="size-4" /> {needsInspection ? "Submit for inspection" : "Add line"}
               </Button>
             </div>
@@ -735,6 +688,12 @@ export function GrnReceiver({
             </Link>
           )}
         </div>
+        {postedLines.some((l) => l.pending) && (
+          <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            {postedLines.filter((l) => l.pending).length} line(s) below are recorded but not yet counted as
+            stock — no lot, no QR — until this GRN carries every required signature.
+          </p>
+        )}
         {postedLines.length === 0 ? (
           <p className="py-6 text-center text-muted-foreground">Nothing received yet.</p>
         ) : (
@@ -762,9 +721,13 @@ export function GrnReceiver({
                           : <Badge variant="secondary">PO</Badge>}
                       </TableCell>
                       <TableCell>
-                        {l.lot_code && l.lot_id
-                          ? <Link href={`/inventory/lots/${l.lot_id}`} className="font-mono text-xs text-primary hover:underline">{l.lot_code}</Link>
-                          : (l.lot_code ?? "—")}
+                        {l.lot_code && l.lot_id ? (
+                          <Link href={`/inventory/lots/${l.lot_id}`} className="font-mono text-xs text-primary hover:underline">{l.lot_code}</Link>
+                        ) : l.pending ? (
+                          <Badge variant="warning">Pending signature</Badge>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -787,9 +750,13 @@ export function GrnReceiver({
                     { label: "Qty", value: formatNumber(l.qty) },
                     {
                       label: "Lot (QR)",
-                      value: l.lot_code && l.lot_id
-                        ? <Link href={`/inventory/lots/${l.lot_id}`} className="font-mono text-xs text-primary hover:underline">{l.lot_code}</Link>
-                        : (l.lot_code ?? "—"),
+                      value: l.lot_code && l.lot_id ? (
+                        <Link href={`/inventory/lots/${l.lot_id}`} className="font-mono text-xs text-primary hover:underline">{l.lot_code}</Link>
+                      ) : l.pending ? (
+                        <Badge variant="warning">Pending signature</Badge>
+                      ) : (
+                        "—"
+                      ),
                     },
                   ]}
                 />

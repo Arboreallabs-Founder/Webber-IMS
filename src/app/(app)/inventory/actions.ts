@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 
-export type ActionResult = { ok?: true; error?: string };
+export type ActionResult = { ok?: true; error?: string; released?: number };
 export type ResolvedLot = {
   id: string;
   lot_code: string;
@@ -14,6 +14,12 @@ export type ResolvedLot = {
   location: string | null;
   status: string;
   project_no: string | null;
+  /** In this lot (itself + its slices): reserved for the scanning project. */
+  reserved_qty: number;
+  /** In this lot (itself + its slices): free stock anyone can take. */
+  open_qty: number;
+  /** reserved_qty + open_qty — what can be consumed here for this project. */
+  available_qty: number;
 };
 
 const OPERATE = ["admin", "team_lead", "team_member", "inventory_admin"]; // consume / stock-take
@@ -24,17 +30,39 @@ async function operator() {
   return p && OPERATE.includes(p.role) ? p : null;
 }
 
-/** Resolve a scanned/typed lot_code to lot details (for the scan + lot screens). */
-export async function resolveLot(lotCode: string): Promise<{ lot?: ResolvedLot; error?: string }> {
+/**
+ * Resolve a scanned/typed lot_code to lot details. The sticker lot and its
+ * reserved slices are read together, so the scan screen can show what is
+ * reserved for `projectId` in this lot plus its open stock — the same set
+ * `consume_from_lot` draws from.
+ */
+export async function resolveLot(lotCode: string, projectId: string | null = null): Promise<{ lot?: ResolvedLot; error?: string }> {
   const code = lotCode.trim();
   if (!code) return { error: "Enter or scan a lot code." };
   const supabase = await createClient();
-  const { data: lot } = await supabase
+  const { data: scanned } = await supabase
     .from("inventory_lots")
-    .select("id, lot_code, component_id, qty_on_hand, location, status, project_id")
+    .select("id, lot_code, source_lot_id")
     .eq("lot_code", code)
     .maybeSingle();
+  if (!scanned) return { error: `No lot found for "${code}".` };
+
+  const rootId = scanned.source_lot_id ?? scanned.id;
+  const { data: family } = await supabase
+    .from("inventory_lots")
+    .select("id, lot_code, component_id, qty_on_hand, location, status, project_id, jw_stage, source_lot_id")
+    .or(`id.eq.${rootId},source_lot_id.eq.${rootId}`);
+  const lot = (family ?? []).find((l) => l.id === rootId);
   if (!lot) return { error: `No lot found for "${code}".` };
+
+  let reserved = 0;
+  let open = 0;
+  for (const l of family ?? []) {
+    const qty = Number(l.qty_on_hand ?? 0);
+    if (qty <= 0 || l.jw_stage === "raw") continue;
+    if (projectId && l.project_id === projectId && (l.status === "issued" || l.status === "open")) reserved += qty;
+    else if (!l.project_id && l.status === "open") open += qty;
+  }
 
   const [{ data: comp }, { data: proj }] = await Promise.all([
     lot.component_id ? supabase.from("components").select("component_no, name").eq("id", lot.component_id).maybeSingle() : Promise.resolve({ data: null }),
@@ -51,6 +79,9 @@ export async function resolveLot(lotCode: string): Promise<{ lot?: ResolvedLot; 
       location: lot.location,
       status: lot.status,
       project_no: proj?.project_no ?? null,
+      reserved_qty: reserved,
+      open_qty: open,
+      available_qty: reserved + open,
     },
   };
 }
@@ -60,68 +91,41 @@ async function lotInfo(supabase: Awaited<ReturnType<typeof createClient>>, lotId
   return data;
 }
 
-/** Scan-to-consume: issue qty into a project (or, admin-only, untagged stock with a reason). Writes an `issue` movement; trigger decrements the lot. */
+/**
+ * Scan-to-consume against a lot's sticker. `consume_from_lot` takes from the
+ * project's reservation in that lot first, then its open stock, and then
+ * releases whatever the project no longer needs. Stock consumption (no
+ * project) is admin-only and needs a reason — enforced there too.
+ */
 export async function consumeLot(fd: FormData): Promise<ActionResult> {
   const p = await getProfile();
-  if (!p) return { error: "Not authorized." };
+  const requisition_id = String(fd.get("requisition_id") ?? "") || null;
+  // Inventory Floor consumes only against a requisition, never free-standing.
+  const allowed = p && (OPERATE.includes(p.role) || (p.role === "floor" && requisition_id));
+  if (!allowed) return { error: "Not authorized." };
   const lot_id = String(fd.get("lot_id"));
   const qty = Number(fd.get("qty") ?? 0) || 0;
   const project_id = String(fd.get("project_id") ?? "") || null;
   const note = String(fd.get("note") ?? "").trim() || null;
-  const requisition_id = String(fd.get("requisition_id") ?? "") || null;
   if (qty <= 0) return { error: "Enter a quantity to consume." };
 
-  if (project_id) {
-    if (!OPERATE.includes(p.role)) return { error: "Not authorized." };
-  } else {
-    // Untagged (stock) consumption — admin-only, and a reason is required (e.g. R&D, sample).
-    if (p.role !== "admin") return { error: "Only Admin can consume stock without a project." };
-    if (!note) return { error: "Enter a reason (e.g. R&D, sample) for stock consumption." };
-  }
-
   const supabase = await createClient();
-  const { data: lotFull } = await supabase
-    .from("inventory_lots")
-    .select("component_id, qty_on_hand, project_id, status, jw_stage")
-    .eq("id", lot_id)
-    .maybeSingle();
-  if (!lotFull) return { error: "Lot not found." };
-
-  // Raw job-work stock can't be consumed — it must be sent for job work and
-  // received back as a completed part first.
-  if (lotFull.jw_stage === "raw") {
-    return { error: "This is a raw job-work lot — send it for job work and receive the completed part before consuming." };
-  }
-
-  // 'issued' lots are exclusively reserved for their project.
-  if (lotFull.status === "issued") {
-    if (lotFull.project_id !== project_id) {
-      return { error: "This lot has been issued to another project and cannot be consumed here." };
-    }
-  } else if (lotFull.project_id && project_id && lotFull.project_id !== project_id) {
-    // 'open' lot that arrived via a project-tagged PO — still reserved for that project.
-    return { error: "This lot is reserved for another project and cannot be consumed here." };
-  }
-
-  const lot = { component_id: lotFull.component_id, qty_on_hand: lotFull.qty_on_hand };
-  if (qty > Number(lot.qty_on_hand ?? 0)) return { error: `Only ${lot.qty_on_hand} on hand.` };
-
-  const { error } = await supabase.from("stock_movements").insert({
-    lot_id,
-    component_id: lot.component_id,
-    movement_type: "issue",
-    qty: -qty,
-    project_id,
-    reference_type: requisition_id ? "requisition" : project_id ? "scan" : "scan-stock",
-    reference_id: requisition_id,
-    note,
-    performed_by: p.id,
-    created_by: p.id,
+  const { data, error } = await supabase.rpc("consume_from_lot", {
+    p_lot_id: lot_id,
+    // null = stock consumption; the generated type can't express a nullable arg
+    p_project_id: project_id as string,
+    p_qty: qty,
+    ...(requisition_id ? { p_requisition_id: requisition_id } : {}),
+    ...(note ? { p_note: note } : {}),
   });
   if (error) return { error: error.message };
+  const res = data as { ok?: boolean; error?: string; released?: number } | null;
+  if (res?.error) return { error: res.error };
+
   revalidatePath(`/inventory/lots/${lot_id}`);
   if (requisition_id) revalidatePath(`/requisitions/${requisition_id}`);
-  return { ok: true };
+  if (project_id) revalidatePath(`/projects/${project_id}`);
+  return { ok: true, released: Number(res?.released ?? 0) };
 }
 
 /** Stock-take: set the actual on-hand → writes an `adjustment` movement for the difference. */
@@ -152,19 +156,26 @@ export async function adjustLot(fd: FormData): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Unissue a lot: remove project reservation, return to open (admin/team_lead only). */
+/**
+ * Unissue a lot (admin/team_lead): return all of its reservation, or `qty` of
+ * it, to open stock. A slice's stock goes back into the lot it sits in.
+ */
 export async function unissueLot(fd: FormData): Promise<ActionResult> {
   const p = await getProfile();
   if (!p || !MANAGE.includes(p.role)) return { error: "Only Admin / Team Lead / Inventory Admin can unissue a lot." };
   const lot_id = String(fd.get("lot_id"));
   const component_id = String(fd.get("component_id") ?? "");
+  const rawQty = String(fd.get("qty") ?? "").trim();
+  const qty = rawQty ? Number(rawQty) : null;
+  if (qty !== null && !(qty > 0)) return { error: "Enter a quantity greater than 0." };
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("inventory_lots")
-    .update({ status: "open", project_id: null })
-    .eq("id", lot_id)
-    .eq("status", "issued");
+  const { data, error } = await supabase.rpc("release_blocked_lot", {
+    p_lot_id: lot_id,
+    ...(qty !== null ? { p_qty: qty } : {}),
+  });
   if (error) return { error: error.message };
+  const res = data as { ok?: boolean; error?: string } | null;
+  if (res?.error) return { error: res.error };
   revalidatePath(`/inventory/${component_id}`);
   revalidatePath(`/inventory/lots/${lot_id}`);
   return { ok: true };

@@ -2,15 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getProfile, canWriteMasters } from "@/lib/auth";
+import { getProfile, canWriteMasters, requirePathAccess } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TemplateLineEditor, type Line, type PreviewLine } from "./template-line-editor";
 import { upsertTemplateLine, removeTemplateLine } from "../actions";
 import { createComponentQuick, promoteAssemblyLine } from "../../bom-builder/actions";
+import { readAll } from "@/lib/server/read-all";
 
 export default async function BomTemplateDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePathAccess("/masters");
   const { id } = await params;
   const profile = await getProfile();
   const supabase = await createClient();
@@ -18,9 +20,9 @@ export default async function BomTemplateDetailPage({ params }: { params: Promis
   const { data: template } = await supabase.from("bom_templates").select("*").eq("id", id).single();
   if (!template) notFound();
 
-  const [{ data: lines }, { data: components }, { data: product }, { data: ownerComp }] = await Promise.all([
+  const [{ data: lines }, components, { data: product }, { data: ownerComp }] = await Promise.all([
     supabase.from("bom_template_lines").select("*").eq("bom_template_id", id).order("sort_order", { nullsFirst: false }),
-    supabase.from("components").select("id, component_no, name").order("component_no"),
+    readAll((f, t) => supabase.from("components").select("id, component_no, name").order("component_no").order("id").range(f, t)),
     template.product_id ? supabase.from("products").select("sku_code, model_name").eq("id", template.product_id).maybeSingle() : Promise.resolve({ data: null }),
     template.component_id ? supabase.from("components").select("component_no, name").eq("id", template.component_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);

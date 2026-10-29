@@ -32,20 +32,22 @@ export function ScanConsume({
   const [lot, setLot] = React.useState<ResolvedLot | null>(null);
   const [qty, setQty] = React.useState(0);
   // Locked to what's still outstanding when the part is on the requisition;
-  // typed in (up to what's in the box) when it isn't — e.g. a requisition
-  // made with "New requisition", which has no lines.
+  // typed in (up to what's available in the box) when it isn't — e.g. a
+  // requisition made with "New requisition", which has no lines.
   const [qtyLocked, setQtyLocked] = React.useState(true);
   const [qtyNote, setQtyNote] = React.useState<string | null>(null);
   const [reason, setReason] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [notice, setNotice] = React.useState<string | null>(null);
 
   async function handleDetect(code: string) {
     setPending(true);
     setError(null);
+    setNotice(null);
     setLot(null);
-    const res = await resolveLot(code);
+    const res = await resolveLot(code, projectId);
     setPending(false);
     if (res.error) { setError(res.error); return; }
     const resolved = res.lot ?? null;
@@ -55,33 +57,32 @@ export function ScanConsume({
     setQtyLocked(true);
     if (!resolved) { setQty(0); setQtyNote(null); return; }
 
-    // Blocked stock can only be drawn against the project it's actually
-    // reserved for — mirrors consumeLot's own rule exactly: an 'issued' lot
-    // tagged elsewhere is blocked outright, an 'open'-but-tagged lot (e.g.
-    // arrived via a project-tagged PO) is only blocked when this requisition
-    // belongs to a *different* project.
-    const blockedElsewhere =
-      resolved.status === "issued"
-        ? resolved.project_no !== projectNo
-        : !!projectId && resolved.project_no !== null && resolved.project_no !== projectNo;
+    // available_qty is what this project may take from the box: its own
+    // reservation inside it plus the box's open stock. Stock reserved for
+    // another project is already left out by resolveLot.
+    const available = resolved.available_qty;
     const onRequisition = !!resolved.component_id && resolved.component_id in requiredByComponent;
     const required = onRequisition ? requiredByComponent[resolved.component_id!] : 0;
 
-    if (blockedElsewhere) {
+    if (available <= 0) {
       setQty(0);
-      setQtyNote(`Reserved for project ${resolved.project_no} — can't consume here.`);
+      setQtyNote(
+        resolved.project_no && resolved.project_no !== projectNo
+          ? `Reserved for project ${resolved.project_no} — can't consume here.`
+          : "Nothing available in this box.",
+      );
     } else if (!onRequisition) {
       setQty(0);
       setQtyLocked(false);
-      setQtyNote(`Not on this requisition — enter the qty to consume (up to ${resolved.qty_on_hand} in this box).`);
+      setQtyNote(`Not on this requisition — enter the qty to consume (up to ${available} available in this box).`);
     } else if (required <= 0) {
       setQty(0);
       setQtyNote("Nothing outstanding for this component on this requisition.");
     } else {
-      setQty(Math.min(required, resolved.qty_on_hand));
+      setQty(Math.min(required, available));
       setQtyNote(
-        resolved.qty_on_hand < required
-          ? `Only ${resolved.qty_on_hand} in this box — ${required} still needed overall.`
+        available < required
+          ? `Only ${available} available in this box — ${required} still needed overall.`
           : null,
       );
     }
@@ -100,6 +101,11 @@ export function ScanConsume({
     const res = await consumeLot(fd);
     setBusy(false);
     if (res?.error) { setError(res.error); return; }
+    setNotice(
+      res?.released
+        ? `Consumed ${qty}. ${res.released} reserved for this project was no longer needed and went back to open inventory.`
+        : `Consumed ${qty}.`,
+    );
     setLot(null);
     setQty(0);
     setQtyNote(null);
@@ -118,6 +124,7 @@ export function ScanConsume({
         <QrScanner onDetect={handleDetect} pending={pending} />
 
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {notice && <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">{notice}</p>}
 
         {lot && (
           <div className="space-y-3 rounded-lg border border-border p-4">
@@ -125,13 +132,18 @@ export function ScanConsume({
               <div>
                 <p className="font-semibold">{lot.component_label}</p>
                 <p className="font-mono text-xs text-muted-foreground">{lot.lot_code}</p>
-                {lot.project_no && lot.project_no !== projectNo && (
-                  <p className="mt-1 text-xs text-amber-600">Currently tagged to project {lot.project_no}</p>
+                {lot.available_qty <= 0 && lot.project_no && lot.project_no !== projectNo && (
+                  <p className="mt-1 text-xs text-amber-600">Reserved for project {lot.project_no}</p>
                 )}
               </div>
               <div className="text-right">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">On hand</p>
-                <p className="text-xl font-semibold">{lot.qty_on_hand}</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Available</p>
+                <p className="text-xl font-semibold">{lot.available_qty}</p>
+                {lot.reserved_qty > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {lot.reserved_qty} reserved for this project + {lot.open_qty} open
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
@@ -144,9 +156,9 @@ export function ScanConsume({
                     type="number"
                     step="any"
                     min="0"
-                    max={lot.qty_on_hand}
+                    max={lot.available_qty}
                     value={qty || ""}
-                    onChange={(e) => setQty(Math.min(Math.max(Number(e.target.value) || 0, 0), lot.qty_on_hand))}
+                    onChange={(e) => setQty(Math.min(Math.max(Number(e.target.value) || 0, 0), lot.available_qty))}
                     autoFocus
                   />
                 )}

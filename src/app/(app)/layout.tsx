@@ -45,7 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <AppShell fullName={profile.full_name} email={user.email} role={profile.role} notifications={notifications}>
+    <AppShell fullName={profile.full_name} email={user.email} role={profile.role} factoryAdmin={profile.is_factory_admin} notifications={notifications}>
       {children}
     </AppShell>
   );

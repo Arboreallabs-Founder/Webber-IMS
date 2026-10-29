@@ -6,13 +6,13 @@ import { usePathname } from "next/navigation";
 import {
   Menu, X, LogOut, ChevronsUpDown, Circle,
   LayoutDashboard, Database,
-  FolderKanban, ClipboardList, ShoppingCart, PackageCheck, Warehouse,
+  FolderKanban, ClipboardList, ShoppingCart, PackageOpen, PackageCheck, Warehouse,
   Package, AlertTriangle, Gauge, UserCog, ScanLine, PenLine, Factory,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { visibleGroups, type NavGroup } from "@/lib/nav";
-import { ROLE_LABELS, type Role } from "@/lib/roles";
+import { roleLabel, type Role } from "@/lib/roles";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -30,6 +30,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/internal-consumption": Factory,
   "/requisitions": ClipboardList,
   "/purchase-orders": ShoppingCart,
+  "/consumables": PackageOpen,
   "/grn": PackageCheck,
   "/inventory": Warehouse,
   "/traceability": ScanLine,
@@ -43,19 +44,22 @@ export function AppShell({
   fullName,
   email,
   role,
+  factoryAdmin = false,
   notifications = [],
   children,
 }: {
   fullName: string | null;
   email: string | undefined;
   role: Role;
+  factoryAdmin?: boolean;
   notifications?: NotificationItem[];
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(true);
   const [open, setOpen] = useState(false);
-  const groups = visibleGroups(role);
+  const groups = visibleGroups(role, factoryAdmin);
+  const label = roleLabel({ role, is_factory_admin: factoryAdmin });
 
   return (
     <div className="min-h-screen bg-background">
@@ -86,7 +90,7 @@ export function AppShell({
           <ScrollArea className="flex-1">
             <NavList groups={groups} pathname={pathname} expanded={!collapsed} />
           </ScrollArea>
-          <Account expanded={!collapsed} fullName={fullName} email={email} role={role} />
+          <Account expanded={!collapsed} fullName={fullName} email={email} roleText={label} />
         </div>
       </aside>
 
@@ -109,7 +113,7 @@ export function AppShell({
             <ScrollArea className="flex-1">
               <NavList groups={groups} pathname={pathname} expanded onNavigate={() => setOpen(false)} />
             </ScrollArea>
-            <Account expanded fullName={fullName} email={email} role={role} />
+            <Account expanded fullName={fullName} email={email} roleText={label} />
           </aside>
         </div>
       )}
@@ -124,7 +128,7 @@ export function AppShell({
             {(role === "admin" || role === "team_lead") && <NotificationBell notifications={notifications} />}
             <span className="hidden text-muted-foreground sm:inline">{fullName ?? email}</span>
             <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-accent-foreground">
-              {ROLE_LABELS[role]}
+              {label}
             </span>
           </div>
         </header>
@@ -231,12 +235,12 @@ function Account({
   expanded,
   fullName,
   email,
-  role,
+  roleText,
 }: {
   expanded: boolean;
   fullName: string | null;
   email: string | undefined;
-  role: Role;
+  roleText: string;
 }) {
   const initials =
     (fullName ?? email ?? "U")
@@ -260,7 +264,7 @@ function Account({
               <span className="flex min-w-0 flex-1 items-center gap-1">
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-foreground">{fullName ?? "User"}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground">{ROLE_LABELS[role]}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground">{roleText}</span>
                 </span>
                 <ChevronsUpDown className="ml-auto size-4 shrink-0 text-muted-foreground/50" />
               </span>
@@ -272,7 +276,7 @@ function Account({
             <p className="truncate text-sm font-medium">{fullName ?? "User"}</p>
             <p className="truncate text-xs text-muted-foreground">{email}</p>
             <span className="mt-1 inline-block rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground">
-              {ROLE_LABELS[role]}
+              {roleText}
             </span>
           </div>
           <DropdownMenuSeparator />

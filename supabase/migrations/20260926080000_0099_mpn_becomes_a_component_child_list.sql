@@ -34,7 +34,10 @@ alter table public.components drop column mpn;
 
 -- 0098 dropped this to let WPC repeat across manufacturer-specific component
 -- rows; component_mpns above replaces that model, so WPC goes back to being
--- the one thing that uniquely names a component.
+-- the one thing that uniquely names a component. (The 0098 file itself was
+-- later removed from the repo, so on a fresh rebuild the constraint was never
+-- dropped — drop it here if it is still there.)
+alter table public.components drop constraint if exists components_component_no_key;
 alter table public.components add constraint components_component_no_key unique (component_no);
 
 create view public.v_components_safe

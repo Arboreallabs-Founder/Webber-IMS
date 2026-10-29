@@ -1,4 +1,4 @@
-import type { Role } from "@/lib/roles";
+import { canAccessPath, type Role } from "@/lib/roles";
 
 export type NavItem = {
   label: string;
@@ -29,6 +29,7 @@ export const NAV: NavGroup[] = [
       { label: "Internal Consumption", href: "/internal-consumption", status: "live" },
       { label: "Requisitions", href: "/requisitions", status: "live" },
       { label: "Purchase Orders", href: "/purchase-orders", status: "live" },
+      { label: "Consumables", href: "/consumables", status: "live" },
       { label: "Goods Receipt", href: "/grn", status: "live" },
       { label: "Inventory", href: "/inventory", status: "live" },
       { label: "Traceability", href: "/traceability", status: "live" },
@@ -48,9 +49,9 @@ export const NAV: NavGroup[] = [
   },
 ];
 
-export function visibleGroups(role: Role): NavGroup[] {
+export function visibleGroups(role: Role, factoryAdmin = false): NavGroup[] {
   return NAV.map((g) => ({
     ...g,
-    items: g.items.filter((i) => !i.roles || i.roles.includes(role)),
+    items: g.items.filter((i) => (!i.roles || i.roles.includes(role)) && canAccessPath(role, i.href, factoryAdmin)),
   })).filter((g) => g.items.length > 0);
 }
