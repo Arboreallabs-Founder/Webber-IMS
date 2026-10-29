@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { formatNumber } from "@/lib/utils";
+import { formatNumber, APP_TIME_ZONE } from "@/lib/utils";
 import type { ActionResult } from "./actions";
 
 type Bom = {
@@ -80,7 +80,7 @@ export function BomPanel({
   const draft = bom?.status === "draft";
   const [sendingBack, setSendingBack] = React.useState(false);
   const [reason, setReason] = React.useState("");
-  const onDate = (d: string | null) => (d ? ` on ${new Date(d).toLocaleDateString("en-IN")}` : "");
+  const onDate = (d: string | null) => (d ? ` on ${new Date(d).toLocaleDateString("en-IN", { timeZone: APP_TIME_ZONE })}` : "");
   const componentItems = React.useMemo(() => components.map((c) => ({ value: c.id, label: `${c.component_no} — ${c.name}` })), [components]);
 
   const totalQty = lines.reduce((s, l) => s + Number(l.required_qty || 0), 0);
@@ -106,14 +106,16 @@ export function BomPanel({
     e.preventDefault();
     setBusy(true);
     setErr(null);
-    const fd = new FormData(e.currentTarget);
+    // React clears e.currentTarget once the handler awaits — keep the form.
+    const form = e.currentTarget;
+    const fd = new FormData(form);
     fd.set("project_id", projectId);
     fd.set("bom_id", bom!.id);
     const res = await addManualAction(fd);
     setBusy(false);
     if (res?.error) setErr(res.error);
     else {
-      e.currentTarget.reset();
+      form.reset();
       router.refresh();
     }
   }

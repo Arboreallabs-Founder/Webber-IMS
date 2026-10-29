@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/print-button";
 import { DocumentSignatureBlock } from "@/components/document-signature-block";
 import { getSigningState } from "@/lib/signatures";
-import { formatNumber } from "@/lib/utils";
+import { formatNumber, APP_TIME_ZONE } from "@/lib/utils";
 
 // ---- MRIN form's own fixed header block (distinct from the PO print's OUR block) ----
 const MRIN_OUR = {
@@ -20,7 +20,7 @@ function formatDateDDMMYYYY(d: string | null): string {
   if (!d) return "—";
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return "—";
-  return dt.toLocaleDateString("en-GB").replace(/\//g, ".");
+  return dt.toLocaleDateString("en-GB", { timeZone: APP_TIME_ZONE }).replace(/\//g, ".");
 }
 
 function itemDescription(c: { component_no: string; name: string } | undefined): string {

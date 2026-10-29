@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { formatNumber } from "@/lib/utils";
+import { formatNumber, APP_TIME_ZONE } from "@/lib/utils";
 import type { ActionResult } from "./actions";
 
 type Row = {
@@ -236,7 +236,7 @@ function DispatchDialog({
   const openLineItems = lineItems.filter((li) => li.remaining > 0);
   const [source, setSource] = React.useState<string>(openLineItems[0]?.id ?? "custom");
   const [customName, setCustomName] = React.useState("");
-  const [date, setDate] = React.useState(() => new Date().toLocaleDateString("en-CA"));
+  const [date, setDate] = React.useState(() => new Date().toLocaleDateString("en-CA", { timeZone: APP_TIME_ZONE }));
   const [challan, setChallan] = React.useState("");
   const [vehicle, setVehicle] = React.useState("");
   const [busy, setBusy] = React.useState(false);

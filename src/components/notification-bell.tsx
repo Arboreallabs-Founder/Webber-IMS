@@ -7,6 +7,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { markNotificationRead } from "@/app/(app)/site-purchases/actions";
+import { formatDateTime } from "@/lib/utils";
 
 export type NotificationItem = { id: string; message: string; link_path: string | null; created_at: string };
 
@@ -51,7 +52,7 @@ export function NotificationBell({ notifications }: { notifications: Notificatio
                     <p>{n.message}</p>
                   )}
                   <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    {new Date(n.created_at).toLocaleString()}
+                    {formatDateTime(n.created_at)}
                   </p>
                 </div>
                 <button

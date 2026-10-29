@@ -20,12 +20,20 @@ export function formatNumber(value: number | null | undefined) {
   return new Intl.NumberFormat("en-IN").format(value);
 }
 
+/**
+ * Every date is shown in India time. Without a fixed zone the server (UTC on
+ * Vercel) and the browser render different text — a hydration mismatch, and
+ * server-rendered times 5½ hours off.
+ */
+export const APP_TIME_ZONE = "Asia/Kolkata";
+
 export function formatDate(value: string | null | undefined) {
   if (!value) return "—";
   return new Date(value).toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: APP_TIME_ZONE,
   });
 }
 
@@ -37,6 +45,7 @@ export function formatDateTime(value: string | null | undefined) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: APP_TIME_ZONE,
   });
 }
 
