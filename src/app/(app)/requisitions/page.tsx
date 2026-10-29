@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getCustomers } from "@/lib/masters-data";
 import { PageHeader } from "@/components/page-header";
 import { projectLabel } from "@/lib/utils";
-import { NewRequisitionButton } from "./new-requisition-button";
 import { RequisitionsTable } from "./requisitions-table";
 
 export default async function RequisitionsPage() {
@@ -24,8 +23,7 @@ export default async function RequisitionsPage() {
     <div>
       <PageHeader
         title="Requisitions"
-        description="Indents — tracked demand, project-tagged or for stock."
-        action={<NewRequisitionButton projects={projectsWithCustomer} />}
+        description="Indents raised from projects and internal consumption."
       />
       <RequisitionsTable
         reqs={(reqs ?? []).map((r) => ({

@@ -323,6 +323,27 @@ export function BomPanel({
 
       {bom && (
         <>
+          {canWrite && draft && (
+            <form key={formKey} onSubmit={onAddManual} className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/30 p-3">
+              <div className="flex-1 min-w-[220px]">
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Add manual line — component</label>
+                <Combobox items={componentItems} defaultValue="" name="component_id" placeholder="— component —" required />
+              </div>
+              <div className="w-24">
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Qty</label>
+                <Input name="required_qty" type="number" step="any" defaultValue="1" />
+              </div>
+              <div className="flex-1 min-w-[140px]">
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Note</label>
+                <Input name="note" placeholder="optional" />
+              </div>
+              {/* Stays usable while earlier lines save; only another BOM action blocks it. */}
+              <Button type="submit" variant="secondary" disabled={busy}>
+                <Plus className="size-4" /> Add
+              </Button>
+            </form>
+          )}
+
           <Table>
             <TableHeader>
               <TableRow>
@@ -337,7 +358,7 @@ export function BomPanel({
               {lines.length === 0 && !saving ? (
                 <TableRow>
                   <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
-                    No lines yet — click Generate BOM or add lines manually below.
+                    No lines yet — click Generate BOM or add lines manually above.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -379,27 +400,6 @@ export function BomPanel({
               ))}
             </TableBody>
           </Table>
-
-          {canWrite && draft && (
-            <form key={formKey} onSubmit={onAddManual} className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/30 p-3">
-              <div className="flex-1 min-w-[220px]">
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Add manual line — component</label>
-                <Combobox items={componentItems} defaultValue="" name="component_id" placeholder="— component —" required />
-              </div>
-              <div className="w-24">
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Qty</label>
-                <Input name="required_qty" type="number" step="any" defaultValue="1" />
-              </div>
-              <div className="flex-1 min-w-[140px]">
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Note</label>
-                <Input name="note" placeholder="optional" />
-              </div>
-              {/* Stays usable while earlier lines save; only another BOM action blocks it. */}
-              <Button type="submit" variant="secondary" disabled={busy}>
-                <Plus className="size-4" /> Add
-              </Button>
-            </form>
-          )}
 
           {approved && (
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground">

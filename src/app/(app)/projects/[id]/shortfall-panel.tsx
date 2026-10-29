@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startNavProgress } from "@/components/navigation-progress";
-import { ShoppingCart, CheckCircle2, AlertTriangle, MinusCircle, ArrowRight, Shuffle, Repeat, ClipboardList } from "lucide-react";
+import { ShoppingCart, CheckCircle2, AlertTriangle, MinusCircle, ArrowRight, Shuffle, Repeat, ClipboardList, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
@@ -26,8 +26,32 @@ type Row = {
   consumed: number;
   sent_to_jw: number;
   shortfall: number;
+  /** Of on_hand, the qty blocked for this project (the rest is open stock). */
+  blocked_mine?: number;
   alternatives?: Alternative[];
 };
+
+/** What the BOM still needs of a component: required less consumed and out at job work. */
+const stillNeeded = (r: Row) => Math.max(r.required - r.consumed - r.sent_to_jw, 0);
+/** Qty a requisition starts at: what's still needed, as far as stock in hand (open + blocked here) covers it. */
+const inStockForRequisition = (r: Row) => Math.min(stillNeeded(r), Math.max(r.on_hand, 0));
+
+/**
+ * "Covered" plus where the cover comes from, used in the same order the
+ * shortfall itself is worked out: this project's blocked stock first, then
+ * open stock, then open PO quantity. Open stock is left unsaid.
+ */
+function coveredDetail(r: Row): string {
+  const outstanding = stillNeeded(r);
+  if (outstanding <= 0) return r.consumed > 0 ? " (in WIP)" : "";
+  const blocked = Math.min(r.blocked_mine ?? 0, outstanding);
+  const open = Math.min(Math.max(r.on_hand - (r.blocked_mine ?? 0), 0), outstanding - blocked);
+  const ordered = Math.min(r.ordered, outstanding - blocked - open);
+  if (blocked === outstanding) return " & blocked";
+  if (ordered === outstanding) return " & ordered";
+  const parts = [blocked > 0 && `${formatNumber(blocked)} blocked`, ordered > 0 && `${formatNumber(ordered)} ordered`].filter(Boolean);
+  return parts.length ? ` (${parts.join(", ")})` : "";
+}
 
 type ReplaceResult = { ok?: true; error?: string; message?: string };
 type RequisitionResult = { ok?: true; error?: string; id?: string };
@@ -64,11 +88,18 @@ export function ShortfallPanel({
   const [raised, setRaised] = React.useState<{ message?: string; created: NonNullable<ActionResult["created"]> } | null>(null);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [reqDialogOpen, setReqDialogOpen] = React.useState(false);
 
+  // One tick column serves both buttons: short rows can go on a PO, rows with
+  // stock in hand can go on a requisition (a partly-stocked row can do both).
   const consumable = React.useMemo(() => new Set(consumableIds), [consumableIds]);
-  const shortRows = rows.filter((r) => r.shortfall > 0 && !consumable.has(r.component_id));
+  const canPo = (r: Row) => r.shortfall > 0 && !consumable.has(r.component_id);
+  const canRequisition = (r: Row) => !!raiseRequisitionAction && inStockForRequisition(r) > 0;
+  const shortRows = rows.filter(canPo);
+  const tickable = rows.filter((r) => canPo(r) || canRequisition(r));
   const selectedRows = shortRows.filter((r) => selected.has(r.component_id));
-  const allSelected = shortRows.length > 0 && shortRows.every((r) => selected.has(r.component_id));
+  const selectedReqRows = rows.filter((r) => canRequisition(r) && selected.has(r.component_id));
+  const allSelected = tickable.length > 0 && tickable.every((r) => selected.has(r.component_id));
   const toggle = (id: string) =>
     setSelected((s) => {
       const n = new Set(s);
@@ -76,10 +107,6 @@ export function ShortfallPanel({
       else n.add(id);
       return n;
     });
-
-  const hasInStockToRequisition = rows.some(
-    (r) => Math.min(Math.max(r.required - r.consumed - r.sent_to_jw, 0), r.on_hand) > 0,
-  );
 
   async function replaceWithAlternative(componentId: string, alternativeId: string) {
     if (!replaceAction || !bomId) return;
@@ -95,22 +122,6 @@ export function ShortfallPanel({
     if (res?.error) { setError(res.error); return; }
     setSubMessage(res.message ?? "Replaced.");
     router.refresh();
-  }
-
-  async function raiseRequisition() {
-    if (!raiseRequisitionAction) return;
-    setBusy("req"); setError(null); setRaised(null);
-    const fd = new FormData();
-    fd.set("project_id", projectId);
-    const res = await raiseRequisitionAction(fd);
-    setBusy(null);
-    if (res?.error) { setError(res.error); return; }
-    if (res.id) {
-      startNavProgress();
-      router.push(`/requisitions/${res.id}`);
-    } else {
-      router.refresh();
-    }
   }
 
   function onRaised(res: ActionResult) {
@@ -141,17 +152,19 @@ export function ShortfallPanel({
           >
             <ShoppingCart className="size-4" /> Raise PO for shortfall{selectedRows.length ? ` (${selectedRows.length} selected)` : ""}
           </Button>
-          {shortRows.length > 0 && selectedRows.length === 0 && (
-            <span className="text-sm text-muted-foreground">Tick the short components to order.</span>
-          )}
           {raiseRequisitionAction && (
             <Button
               variant="outline"
-              loading={busy === "req"} disabled={!hasInStockToRequisition}
-              onClick={raiseRequisition}
+              disabled={selectedReqRows.length === 0}
+              onClick={() => { setError(null); setRaised(null); setReqDialogOpen(true); }}
             >
-              <ClipboardList className="size-4" /> Raise requisition
+              <ClipboardList className="size-4" /> Raise requisition{selectedReqRows.length ? ` (${selectedReqRows.length} selected)` : ""}
             </Button>
+          )}
+          {tickable.length > 0 && selected.size === 0 && (
+            <span className="text-sm text-muted-foreground">
+              Tick short components to order them, or components in stock to requisition them.
+            </span>
           )}
         </div>
       )}
@@ -178,11 +191,11 @@ export function ShortfallPanel({
               <TableHead className="w-10">
                 <input
                   type="checkbox"
-                  aria-label="Select all short components"
+                  aria-label="Select all components"
                   className="size-4 rounded border-input"
                   checked={allSelected}
-                  disabled={shortRows.length === 0}
-                  onChange={() => setSelected(allSelected ? new Set() : new Set(shortRows.map((r) => r.component_id)))}
+                  disabled={tickable.length === 0}
+                  onChange={() => setSelected(allSelected ? new Set() : new Set(tickable.map((r) => r.component_id)))}
                 />
               </TableHead>
             )}
@@ -200,7 +213,7 @@ export function ShortfallPanel({
             <TableRow key={r.component_id} className="group">
               {canProcure && (
                 <TableCell>
-                  {r.shortfall > 0 && !consumable.has(r.component_id) && (
+                  {(canPo(r) || canRequisition(r)) && (
                     <input
                       type="checkbox"
                       aria-label={`Select ${r.component_label}`}
@@ -229,8 +242,7 @@ export function ShortfallPanel({
               <TableCell>
                 {r.shortfall <= 0 ? (
                   <span className="inline-flex items-center gap-1 text-xs text-green-700">
-                    <CheckCircle2 className="size-3.5" /> Covered
-                    {r.on_hand <= 0 && r.consumed > 0 ? " (in WIP)" : ""}
+                    <CheckCircle2 className="size-3.5" /> Covered{coveredDetail(r)}
                   </span>
                 ) : r.on_hand > 0 ? (
                   <span className="inline-flex items-center gap-1 text-xs text-amber-700">
@@ -274,8 +286,23 @@ export function ShortfallPanel({
         </TableBody>
       </Table>
       <p className="text-xs text-muted-foreground">
-        Issuing/consuming components into this project happens from Requisitions, not here.
+        Stock is consumed into this project by scanning it on the requisition, not here.
       </p>
+
+      {reqDialogOpen && raiseRequisitionAction && (
+        <RaiseRequisitionDialog
+          projectId={projectId}
+          rows={selectedReqRows}
+          action={raiseRequisitionAction}
+          onClose={() => setReqDialogOpen(false)}
+          onRaised={(id) => {
+            setReqDialogOpen(false);
+            setSelected(new Set());
+            startNavProgress();
+            router.push(`/requisitions/${id}`);
+          }}
+        />
+      )}
 
       {dialogOpen && (
         <RaisePoDialog
@@ -289,6 +316,129 @@ export function ShortfallPanel({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Confirm the quantity of each ticked in-stock component before the
+ * requisition is raised. Starts at what's still needed (as far as stock
+ * covers it) and can be changed up to what's still needed; the server checks
+ * the same limits. Nothing is blocked here — the stock is scanned and
+ * consumed on the requisition.
+ */
+function RaiseRequisitionDialog({
+  projectId,
+  rows: initialRows,
+  action,
+  onClose,
+  onRaised,
+}: {
+  projectId: string;
+  rows: Row[];
+  action: (fd: FormData) => Promise<RequisitionResult>;
+  onClose: () => void;
+  onRaised: (requisitionId: string) => void;
+}) {
+  const [rows, setRows] = React.useState(initialRows);
+  const [qty, setQty] = React.useState<Record<string, string>>(() =>
+    Object.fromEntries(initialRows.map((r) => [r.component_id, String(inStockForRequisition(r))])),
+  );
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    for (const r of rows) {
+      const q = Number(qty[r.component_id]);
+      if (!(q > 0)) return setError(`${r.component_label}: enter a quantity above 0, or remove the line.`);
+      if (q > stillNeeded(r)) return setError(`${r.component_label}: the BOM only still needs ${formatNumber(stillNeeded(r))}.`);
+    }
+    const fd = new FormData();
+    fd.set("project_id", projectId);
+    fd.set("items", JSON.stringify(rows.map((r) => ({ component_id: r.component_id, qty: Number(qty[r.component_id]) }))));
+    setBusy(true);
+    const res = await action(fd);
+    setBusy(false);
+    if (res?.error) return setError(res.error);
+    if (res.id) onRaised(res.id);
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Raise requisition"
+      description="Check the quantity for each component. The stock is then scanned and consumed on the requisition, which moves it into WIP."
+      className="max-w-3xl"
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 font-medium">Component</th>
+                <th className="px-3 py-2 font-medium">Still needed</th>
+                <th className="px-3 py-2 font-medium">In stock</th>
+                <th className="px-3 py-2 font-medium">Qty to requisition</th>
+                <th className="w-10 px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rows.map((r) => {
+                const blocked = Math.min(r.blocked_mine ?? 0, r.on_hand);
+                return (
+                  <tr key={r.component_id}>
+                    <td className="px-3 py-2">{r.component_label}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{formatNumber(stillNeeded(r))}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {formatNumber(r.on_hand)}
+                      {blocked > 0 && <span className="block text-xs">{formatNumber(blocked)} blocked here</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Input
+                        type="number"
+                        step="any"
+                        min="0"
+                        max={stillNeeded(r)}
+                        className="w-24"
+                        aria-label={`Quantity of ${r.component_label}`}
+                        value={qty[r.component_id]}
+                        onChange={(e) => setQty((q) => ({ ...q, [r.component_id]: e.target.value }))}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive"
+                        aria-label={`Remove ${r.component_label}`}
+                        onClick={() => setRows((rs) => rs.filter((x) => x.component_id !== r.component_id))}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No components left — close and tick some.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit" loading={busy} disabled={rows.length === 0}>
+            <ClipboardList className="size-4" /> Raise requisition ({rows.length})
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

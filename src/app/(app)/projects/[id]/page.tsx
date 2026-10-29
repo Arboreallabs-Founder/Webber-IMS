@@ -416,7 +416,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   );
   const withRaw = (cid: string | null, label: string) => (cid && rawOnlyComponentIds.has(cid) ? `${label} (raw)` : label);
   bomLines = bomLines.map((l) => ({ ...l, component_label: withRaw(l.component_id, l.component_label) }));
-  shortfallRows = shortfallRows.map((r) => ({ ...r, component_label: withRaw(r.component_id, r.component_label) }));
+  // Blocked-for-this-project qty from the stock status rows, so the shortfall
+  // table can say when a "Covered" line is covered by stock already blocked.
+  const blockedMineByComponent = new Map(stockStatusRows.map((s) => [s.component_id, s.blocked_mine]));
+  shortfallRows = shortfallRows.map((r) => ({
+    ...r,
+    component_label: withRaw(r.component_id, r.component_label),
+    blocked_mine: blockedMineByComponent.get(r.component_id) ?? 0,
+  }));
 
   // ---- Raise PO for selected shortfall: each short component's default supplier
   // (Master Data), the vendors linked to it, their Master Data price, and the last

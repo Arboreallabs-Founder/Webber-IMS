@@ -58,40 +58,19 @@ export async function startBom(fd: FormData): Promise<ActionResult> {
   const modelName = String(fd.get("model_name") ?? "").trim();
   if (!skuCode || !modelName) return { error: "SKU code and model name are both required." };
 
-  let categoryId = String(fd.get("category_id") ?? "").trim() || null;
-  const newCategoryName = String(fd.get("new_category_name") ?? "").trim();
-  if (!categoryId && newCategoryName) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: cat, error: catErr } = await (supabase.from("categories") as any)
-      .insert({ name: newCategoryName, created_by: profile!.id })
-      .select("id")
-      .single();
-    if (catErr) return { error: catErr.message };
-    categoryId = cat.id as string;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: product, error: prodErr } = await (supabase.from("products") as any)
-    .insert({
-      sku_code: skuCode,
-      model_name: modelName,
-      category_id: categoryId,
-      is_serialized: fd.get("is_serialized") !== null && fd.get("is_serialized") !== "false",
-      created_by: profile!.id,
-    })
-    .select("id")
-    .single();
-  if (prodErr) return { error: prodErr.message };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: bom, error: bomErr } = await (supabase.from("bom_templates") as any)
-    .insert({ product_id: product.id, version: 1, is_active: true, created_by: profile!.id })
-    .select("id")
-    .single();
-  if (bomErr) return { error: bomErr.message };
+  // Category (when typed in), product and its BOM are created together in one
+  // transaction, so a failure part-way can't leave a product with no BOM.
+  const { data: templateId, error } = await supabase.rpc("start_product_bom", {
+    p_sku: skuCode,
+    p_model: modelName,
+    p_category_id: String(fd.get("category_id") ?? "").trim() || undefined,
+    p_new_category: String(fd.get("new_category_name") ?? "").trim() || undefined,
+    p_is_serialized: fd.get("is_serialized") !== null && fd.get("is_serialized") !== "false",
+  });
+  if (error) return { error: error.message };
 
   revalidatePath("/masters/bom-builder");
-  return { ok: true, redirect: `/masters/bom-builder/${bom.id}` };
+  return { ok: true, redirect: `/masters/bom-builder/${templateId as string}` };
 }
 
 /** Edit the product header (model / SKU / category) from inside the builder. */

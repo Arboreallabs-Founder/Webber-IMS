@@ -32,8 +32,7 @@ export function ScanConsume({
   const [lot, setLot] = React.useState<ResolvedLot | null>(null);
   const [qty, setQty] = React.useState(0);
   // Locked to what's still outstanding when the part is on the requisition;
-  // typed in (up to what's available in the box) when it isn't — e.g. a
-  // requisition made with "New requisition", which has no lines.
+  // typed in (up to what's available in the box) when it isn't.
   const [qtyLocked, setQtyLocked] = React.useState(true);
   const [qtyNote, setQtyNote] = React.useState<string | null>(null);
   const [reason, setReason] = React.useState("");

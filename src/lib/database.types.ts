@@ -6067,6 +6067,16 @@ export type Database = {
         Returns: string
       }
       fiscal_year_label: { Args: { d?: string }; Returns: string }
+      start_product_bom: {
+        Args: {
+          p_category_id?: string
+          p_is_serialized?: boolean
+          p_model: string
+          p_new_category?: string
+          p_sku: string
+        }
+        Returns: string
+      }
       get_lot_traceability: { Args: { p_lot_code: string }; Returns: Json }
       issue_requisition: {
         Args: { p_req_id: string; p_user_id: string }

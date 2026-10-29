@@ -61,7 +61,7 @@ export function Combobox({
   const [highlighted, setHighlighted] = React.useState(0);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
-  const [rect, setRect] = React.useState<{ top: number; left: number; width: number } | null>(null);
+  const [rect, setRect] = React.useState<{ top: number; bottom: number; left: number; width: number } | null>(null);
 
   // Dropdown is portaled to <body> (see below) so it can't be clipped by a
   // scrollable ancestor like the Dialog body — position it against the
@@ -72,7 +72,7 @@ export function Combobox({
       const el = containerRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      setRect({ top: r.bottom, left: r.left, width: r.width });
+      setRect({ top: r.top, bottom: r.bottom, left: r.left, width: r.width });
     }
     updateRect();
     window.addEventListener("scroll", updateRect, true);
@@ -124,6 +124,18 @@ export function Combobox({
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
+  // Opens downward, or upward when the list (max-h-64 = 256px) wouldn't fit
+  // below the input but has more room above — e.g. a field near the bottom
+  // of the screen.
+  const listStyle = (): React.CSSProperties => {
+    if (!rect) return {};
+    const below = window.innerHeight - rect.bottom;
+    const flip = below < 264 && rect.top > below;
+    return flip
+      ? { position: "fixed", bottom: window.innerHeight - rect.top + 4, left: rect.left, width: rect.width }
+      : { position: "fixed", top: rect.bottom + 4, left: rect.left, width: rect.width };
+  };
+
   function select(item: ComboboxItem) {
     setSelected(item.value);
     setQuery(item.label);
@@ -170,7 +182,7 @@ export function Combobox({
       {open && rect && results.length > 0 && createPortal(
         <div
           ref={listRef}
-          style={{ position: "fixed", top: rect.top + 4, left: rect.left, width: rect.width }}
+          style={listStyle()}
           className="z-[60] max-h-64 overflow-y-auto rounded-md border border-border bg-card shadow-lg"
         >
           {results.map((item, i) => (
@@ -197,7 +209,7 @@ export function Combobox({
       {open && rect && query && results.length === 0 && createPortal(
         <div
           ref={listRef}
-          style={{ position: "fixed", top: rect.top + 4, left: rect.left, width: rect.width }}
+          style={listStyle()}
           className="z-[60] rounded-md border border-border bg-card shadow-lg"
         >
           {onCreate ? (
