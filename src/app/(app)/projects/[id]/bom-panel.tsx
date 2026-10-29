@@ -20,7 +20,15 @@ type Bom = {
   submitted_by_name: string | null;
   review_note: string | null;
 } | null;
-type BomLine = { id: string; component_label: string; required_qty: number; source: string; note: string | null };
+type BomLine = { id: string; component_id?: string | null; component_label: string; required_qty: number; source: string; note: string | null };
+/**
+ * A line added on screen whose save hasn't shown up in `lines` yet.
+ * `baseline` = how many matching lines (same component and qty) the server
+ * list held when it was added; once it holds more, this one has arrived.
+ */
+type PendingLine = { key: number; component_id: string; component_label: string; required_qty: number; note: string | null; saved: boolean; baseline: number };
+const matching = (lines: BomLine[], componentId: string, qty: number) =>
+  lines.filter((l) => l.component_id === componentId && Number(l.required_qty) === qty).length;
 type Component = { id: string; component_no: string; name: string };
 type Act = (fd: FormData) => Promise<ActionResult>;
 
@@ -85,7 +93,29 @@ export function BomPanel({
 
   const totalQty = lines.reduce((s, l) => s + Number(l.required_qty || 0), 0);
 
+  // Manual lines show at once, greyed out, while they save; the add form stays
+  // usable for the next one. The server's list stays the source of truth:
+  // a saved line leaves `pendingLines` as soon as a refresh brings `lines`.
+  const [pendingLines, setPendingLines] = React.useState<PendingLine[]>([]);
+  const [formKey, setFormKey] = React.useState(0);
+  const nextKey = React.useRef(0);
+  const saving = pendingLines.length > 0;
+  React.useEffect(() => {
+    setPendingLines((prev) => {
+      const next = prev.filter((p) => !(p.saved && matching(lines, p.component_id, p.required_qty) > p.baseline));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [lines]);
+  // Leaving mid-save could drop a line — ask first.
+  React.useEffect(() => {
+    if (!saving) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [saving]);
+
   async function run(action: Act, extra: Record<string, string>, confirmMsg?: string) {
+    if (saving) return;
     if (confirmMsg && !confirm(confirmMsg)) return;
     setBusy(true);
     setErr(null);
@@ -104,20 +134,43 @@ export function BomPanel({
 
   async function onAddManual(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setBusy(true);
     setErr(null);
-    // React clears e.currentTarget once the handler awaits — keep the form.
-    const form = e.currentTarget;
-    const fd = new FormData(form);
+    const fd = new FormData(e.currentTarget);
     fd.set("project_id", projectId);
     fd.set("bom_id", bom!.id);
-    const res = await addManualAction(fd);
-    setBusy(false);
-    if (res?.error) setErr(res.error);
-    else {
-      form.reset();
-      router.refresh();
+    const componentId = String(fd.get("component_id") ?? "");
+    if (!componentId) { setErr("Pick a component to add."); return; }
+    const label = componentItems.find((c) => c.value === componentId)?.label ?? "this component";
+    const key = nextKey.current++;
+    const qty = Number(fd.get("required_qty") ?? 0) || 0;
+    setPendingLines((prev) => [...prev, {
+      key,
+      component_id: componentId,
+      component_label: label,
+      required_qty: qty,
+      note: String(fd.get("note") ?? "").trim() || null,
+      saved: false,
+      baseline: matching(lines, componentId, qty),
+    }]);
+    setFormKey((k) => k + 1); // fresh, empty form for the next line
+
+    let res: ActionResult;
+    try {
+      res = await addManualAction(fd);
+    } catch {
+      res = { error: "the connection dropped before it was saved" };
     }
+    if (res?.error) {
+      setPendingLines((prev) => prev.filter((p) => p.key !== key));
+      setErr(`${label} was not added: ${res.error}`);
+      router.refresh();
+      return;
+    }
+    setPendingLines((prev) => prev.map((p) => (p.key === key ? { ...p, saved: true } : p)));
+    router.refresh();
+    // Backstop: it is saved, so never let it hold the buttons locked for long
+    // if the refreshed list doesn't match it exactly.
+    window.setTimeout(() => setPendingLines((prev) => prev.filter((p) => p.key !== key)), 15000);
   }
 
   const locked = bomPolicy === "required" && !everApproved && !bomNotNeeded;
@@ -130,7 +183,7 @@ export function BomPanel({
             type="checkbox"
             className="size-4 rounded border-input"
             checked={bomNotNeeded}
-            disabled={busy}
+            disabled={busy || saving}
             onChange={(e) =>
               run(
                 setNotNeededAction,
@@ -174,6 +227,7 @@ export function BomPanel({
         )}
         <span className="text-sm text-muted-foreground">
           {lines.length} line(s) · {formatNumber(totalQty)} total qty
+          {saving && ` · saving ${pendingLines.length} more…`}
         </span>
 
         {canWrite && (
@@ -182,6 +236,7 @@ export function BomPanel({
               <Button
                 variant="outline"
                 loading={busy}
+                disabled={saving}
                 onClick={() =>
                   run(generateAction, {}, bom ? `Regenerate BOM from templates? Template lines are rebuilt (manual lines kept)${approved ? "; the approved BOM goes back to draft and needs approving again" : ""}.` : undefined)
                 }
@@ -195,22 +250,22 @@ export function BomPanel({
               </Button>
             )}
             {draft && !canApprove && (
-              <Button loading={busy} disabled={lines.length === 0} onClick={() => run(submitAction, { bom_id: bom!.id })}>
+              <Button loading={busy} disabled={lines.length === 0 || saving} onClick={() => run(submitAction, { bom_id: bom!.id })}>
                 <Send className="size-4" /> Submit for approval
               </Button>
             )}
             {pending && !canApprove && (
-              <Button variant="outline" loading={busy} onClick={() => run(withdrawAction, { bom_id: bom!.id }, "Withdraw this BOM from approval so you can change it?")}>
+              <Button variant="outline" loading={busy} disabled={saving} onClick={() => run(withdrawAction, { bom_id: bom!.id }, "Withdraw this BOM from approval so you can change it?")}>
                 <Undo2 className="size-4" /> Withdraw
               </Button>
             )}
             {pending && canApprove && (
-              <Button variant="outline" loading={busy} onClick={() => { setReason(""); setSendingBack((v) => !v); }}>
+              <Button variant="outline" loading={busy} disabled={saving} onClick={() => { setReason(""); setSendingBack((v) => !v); }}>
                 <Undo2 className="size-4" /> Send back
               </Button>
             )}
             {(draft || pending) && canApprove && (
-              <Button loading={busy} disabled={lines.length === 0} onClick={() => run(approveAction, { bom_id: bom!.id })}>
+              <Button loading={busy} disabled={lines.length === 0 || saving} onClick={() => run(approveAction, { bom_id: bom!.id })}>
                 <Check className="size-4" /> Approve
               </Button>
             )}
@@ -279,7 +334,7 @@ export function BomPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {lines.length === 0 ? (
+              {lines.length === 0 && !saving ? (
                 <TableRow>
                   <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
                     No lines yet — click Generate BOM or add lines manually below.
@@ -301,6 +356,7 @@ export function BomPanel({
                           size="icon"
                           className="text-destructive"
                           aria-label="Remove line"
+                          disabled={saving}
                           onClick={() => run(removeLineAction, { id: l.id })}
                         >
                           <Trash2 className="size-4" />
@@ -310,11 +366,22 @@ export function BomPanel({
                   </TableRow>
                 ))
               )}
+              {pendingLines.map((p) => (
+                <TableRow key={`pending-${p.key}`} className="opacity-60" aria-busy="true">
+                  <TableCell className="font-medium">{p.component_label}</TableCell>
+                  <TableCell>{formatNumber(p.required_qty)}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">Saving…</Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{p.note ?? "—"}</TableCell>
+                  {canWrite && draft && <TableCell />}
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
 
           {canWrite && draft && (
-            <form onSubmit={onAddManual} className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/30 p-3">
+            <form key={formKey} onSubmit={onAddManual} className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/30 p-3">
               <div className="flex-1 min-w-[220px]">
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">Add manual line — component</label>
                 <Combobox items={componentItems} defaultValue="" name="component_id" placeholder="— component —" required />
@@ -327,7 +394,8 @@ export function BomPanel({
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">Note</label>
                 <Input name="note" placeholder="optional" />
               </div>
-              <Button type="submit" variant="secondary" loading={busy}>
+              {/* Stays usable while earlier lines save; only another BOM action blocks it. */}
+              <Button type="submit" variant="secondary" disabled={busy}>
                 <Plus className="size-4" /> Add
               </Button>
             </form>

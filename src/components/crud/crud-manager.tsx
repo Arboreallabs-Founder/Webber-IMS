@@ -45,6 +45,8 @@ export type Field = {
 
 type Row = Record<string, unknown> & { id: string };
 
+const PAGE_SIZE = 50;
+
 export function CrudManager({
   title,
   entityName,
@@ -92,6 +94,13 @@ export function CrudManager({
     const q = query.toLowerCase();
     return searchKeys.some((k) => String(r[k] ?? "").toLowerCase().includes(q));
   });
+
+  // Draw one page at a time — rendering every row (each with its own action
+  // buttons) made big masters slow to load. Search still covers every row.
+  const [page, setPage] = React.useState(0);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageRows = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
   function openCreate() {
     setError(null);
@@ -150,7 +159,7 @@ export function CrudManager({
           <Input
             placeholder={`Search ${title.toLowerCase()}…`}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(0); }}
             className="pl-8"
           />
         </div>
@@ -183,7 +192,7 @@ export function CrudManager({
               </TableCell>
             </TableRow>
           ) : (
-            filtered.map((row) => (
+            pageRows.map((row) => (
               <TableRow key={row.id}>
                 {visibleColumns.map((c) => (
                   <TableCell key={c.key}>{renderCell(row[c.key], c.format)}</TableCell>
@@ -224,6 +233,20 @@ export function CrudManager({
           )}
         </TableBody>
       </Table>
+
+      {pageCount > 1 && (
+        <div className="mt-3 flex items-center justify-end gap-2 text-sm text-muted-foreground">
+          <span>
+            {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <Button variant="outline" size="sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
+            Previous
+          </Button>
+          <Button variant="outline" size="sm" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)}>
+            Next
+          </Button>
+        </div>
+      )}
 
       <Dialog
         open={creating || editing !== null}

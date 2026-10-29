@@ -134,9 +134,16 @@ async function downloadInventoryExcel(rows: InventoryRow[]) {
   });
 }
 
-export function InventoryTable({ rows, exportRows, finance, canDownload }: { rows: InventoryRow[]; exportRows: InventoryRow[]; finance: boolean; canDownload: boolean }) {
+export function InventoryTable({ rows, loadExportRows, finance, canDownload }: {
+  rows: InventoryRow[];
+  /** Builds the export's rows on the server — only when Download is pressed. */
+  loadExportRows: () => Promise<{ rows?: InventoryRow[]; error?: string }>;
+  finance: boolean;
+  canDownload: boolean;
+}) {
   const [query, setQuery] = React.useState("");
   const [exporting, setExporting] = React.useState(false);
+  const [exportError, setExportError] = React.useState<string | null>(null);
   const matches = (r: { component_no: string; name: string }) => {
     if (!query) return true;
     const q = query.toLowerCase();
@@ -161,8 +168,13 @@ export function InventoryTable({ rows, exportRows, finance, canDownload }: { row
           loading={exporting}
           onClick={async () => {
             setExporting(true);
+            setExportError(null);
             try {
-              await downloadInventoryExcel(exportRows.filter(matches));
+              const res = await loadExportRows();
+              if (res.error || !res.rows) { setExportError(res.error ?? "Could not build the export."); return; }
+              await downloadInventoryExcel(res.rows.filter(matches));
+            } catch {
+              setExportError("Could not build the export — try again.");
             } finally {
               setExporting(false);
             }
@@ -171,6 +183,7 @@ export function InventoryTable({ rows, exportRows, finance, canDownload }: { row
           <FileSpreadsheet className="size-4" /> Download Excel
         </Button>}
       </div>
+      {exportError && <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{exportError}</p>}
       <div className="hidden sm:block">
         <Table>
           <TableHeader>

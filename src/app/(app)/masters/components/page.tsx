@@ -115,6 +115,15 @@ export default async function ComponentsPage() {
     { name: "description", label: "Description", type: "textarea" },
   ];
 
+  // Ship only what the list shows and the edit form fills — every other
+  // column of every component would otherwise travel to the browser too.
+  const keep = new Set(["id", ...columns.map((c) => c.key), ...fields.map((f) => f.name)]);
+  const slimRows = rows.map((r) => {
+    const out: Record<string, unknown> & { id: string } = { id: r.id };
+    for (const [k, v] of Object.entries(r)) if (keep.has(k)) out[k] = v;
+    return out;
+  });
+
   return (
     <div>
       <PageHeader
@@ -124,7 +133,7 @@ export default async function ComponentsPage() {
       <CrudManager
         title="Components"
         entityName="component"
-        rows={rows}
+        rows={slimRows}
         columns={columns}
         fields={fields}
         upsertAction={upsert}
