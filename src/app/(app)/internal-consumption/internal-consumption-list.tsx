@@ -273,8 +273,11 @@ function ConsumptionFormDialog({
         {initial && <input type="hidden" name="id" value={initial.id} />}
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Reference No." required className="col-span-2">
-            <Input name="project_no" required defaultValue={initial?.project_no ?? ""} placeholder="IC-001" />
+          {/* Assigned by the database (IC/<year>/<no.>) and fixed — never typed or edited. */}
+          <Field label="Reference No." className="col-span-2">
+            <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              {initial ? initial.project_no : "Assigned automatically when you save (IC/…)"}
+            </p>
           </Field>
 
           <Field label="Department" required className="col-span-2">

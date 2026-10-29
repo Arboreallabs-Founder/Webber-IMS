@@ -8,9 +8,13 @@ import { upsert as projectsUpsert, remove as projectsRemove } from "../projects/
  * same BOM/shortfall/requisition machinery, just no customer. Force the
  * flag server-side so this form can never create (or edit into) a regular
  * customer project regardless of what the client sends.
+ *
+ * The reference no. (project_no) is never taken from the form: the database
+ * assigns IC/<year>/<no.> on insert and keeps it fixed (migration 0118).
  */
 export async function upsert(fd: FormData): Promise<ActionResult> {
   fd.set("is_internal", "true");
+  fd.delete("project_no");
   return projectsUpsert(fd);
 }
 

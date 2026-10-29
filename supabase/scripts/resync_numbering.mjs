@@ -17,6 +17,7 @@ const counters = [
   ["seq_req_no", "requisitions", "req_no", "REQ"],
   ["seq_dispatch_no", "dispatches", "dispatch_no", "DSP"],
   ["seq_fg_no", "finished_goods", "serial_no", "FG"],
+  ["seq_ic_no", "projects", "project_no", "IC"],
 ];
 await c.query("begin");
 for (const [seq, table, col, prefix] of counters) {
